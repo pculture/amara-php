@@ -1,0 +1,19 @@
+{
+    "name": "pculture/amara-php-access",
+    "description": "PHP Data Access Object for interacting with Amara's API",
+    "license": "GPLv3",
+    "keywords": ["API"],
+    "authors": [
+        {
+            "name": "Fran Ontanaya",
+            "email": "fran@amara.org"
+        }
+    ],
+    "require": {},
+    "require-dev": {},
+    "autoload": {
+        "psr-4": {
+            "AmaraPHPAccess\\": "src/"
+        }
+    }
+}
