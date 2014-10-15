@@ -20,10 +20,10 @@ namespace AmaraPHPAccess;
     @version 0.1.0
     @uses DummyLogger
 
-    @todo Caching
-    @todo Add relevant logging events
-    @todo Validate everything.
-    @todo Support HTTPS
+    @TODO Catching
+    @TODO Add relevant logging events
+    @TODO Validate everything.
+    @TODO Support HTTPS
 */
 class API {
     const VERSION = '0.1.0';
