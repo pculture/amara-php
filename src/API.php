@@ -413,14 +413,14 @@ class API {
         @since 0.1.0
     */
     function getVideoInfo( $video_id, $params = array() ) {
-        if ( $this->isValidVideoID( $id ) ) {
+        if ( $this->isValidVideoID( $video_id ) ) {
             $r = array(
                 'resource' => 'video',
                 'content_type' => 'json',
                 'video_id' => $video_id
             );
             $q = array();
-        } elseif ( $video_url !== null ) {
+        } elseif ( isset( $params[ 'video_url' ] ) && $params[ 'video_url' ] !== null ) {
             $r = array(
                 'resource' => 'videos',
                 'content_type' => 'json'
@@ -665,6 +665,28 @@ class API {
         return $this->setResource( $r, $q );
     }
 
+    // TEAM MEMBER RESOURCE
+    // http://amara.readthedocs.org/en/latest/api.html#team-member-resource
+
+    /**
+        Add a new member to a team
+
+        @since 0.2.0
+    */
+
+    function addMember( $team, $params ) {
+        // TODO: It shouldn't assign the task to me
+        $r = array(
+            'resource' => 'members',
+            'content_type' => 'json',
+            'team' => $team
+        );
+        $q = array(
+        );
+        return $this->createResource( $r, $q );
+    }
+
+
     // Validators
 
     /**
@@ -708,7 +730,7 @@ class API {
     function isValidVideoID( $id ) {
         if ( strlen( $id ) != 12 ) {
             return false;
-        } elseif ( preg_match( '/^[A-Za-z]*$/', $id ) !== 1 ) {
+        } elseif ( preg_match( '/^[A-Za-z0-9]*$/', $id ) !== 1 ) {
             return false;
         }
         return true;
