@@ -17,7 +17,7 @@ namespace AmaraPHPAccess;
     @author Fran Ontanaya
     @copyright 2014 Fran Ontanaya
     @license GPLv3
-    @version 0.1.0
+    @version 0.2.0
     @uses DummyLogger
 
     @todo Caching
@@ -26,7 +26,7 @@ namespace AmaraPHPAccess;
     @todo Support HTTPS
 */
 class API {
-    const VERSION = '0.1.0';
+    const VERSION = '0.2.0';
 
     /**
         Credentials
@@ -126,7 +126,7 @@ class API {
         User may expect the previous logger to not continue being used
         after changing it, so if this fails, we set it as null.
 
-        @since 0.1
+        @since 0.1.0
     */
     function setLogger( $logger ) {
         if ( !$this->isValidObject( $logger, array( 'emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug', 'log' ) ) ) {
@@ -207,6 +207,12 @@ class API {
                 break;
             case 'task':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/tasks/{$r[ 'task_id' ]}/";
+                break;
+            case 'members':
+                $url = "{$this->host}teams/{$r[ 'team' ]}/members/";
+                break;
+            case 'member':
+                $url = "{$this->host}teams/{$r[ 'team' ]}/members/{$r[ 'username' ]}";
                 break;
             default:
                 return null;
@@ -673,7 +679,6 @@ class API {
 
         @since 0.2.0
     */
-
     function addMember( $team, $params ) {
         // TODO: It shouldn't assign the task to me
         $r = array(
