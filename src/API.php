@@ -292,7 +292,7 @@ class API {
     protected function useResource( $method, $r, $data ) {
         $result = array();
         $header = $this->getHeader( $r[ 'content_type' ] );
-        if ( isset( $data[ 'limit' ] ) && !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
+        if ( !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
         do {
             if ( $method == 'PUT' ) {
                 $url = $this->getResourceUrl( $r, null );
@@ -311,7 +311,7 @@ class API {
             }
             $result = array_merge( $result, $resource_data->objects );
             $data[ 'offset' ] += $this->limit;
-        } while( $resource_data->meta->next && $r[ 'offset' ] < $resource_data->meta->total_count );
+        } while( $resource_data->meta->next && $data[ 'offset' ] < $resource_data->meta->total_count );
         return $result;
     }
 
@@ -682,6 +682,8 @@ class API {
             'team' => $team
         );
         $q = array(
+            'username' => $params[ 'username' ],
+            'role' => $params[ 'role' ]
         );
         return $this->createResource( $r, $q );
     }
