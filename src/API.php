@@ -302,7 +302,7 @@ class API {
     protected function useResource( $method, $r, $data ) {
         $result = array();
         $header = $this->getHeader( $r[ 'content_type' ] );
-        if ( isset( $data[ 'limit' ] && !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
+        if ( isset( $data[ 'limit' ] ) && !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
         do {
             if ( $method == 'PUT' ) {
                 $url = $this->getResourceUrl( $r, null );
