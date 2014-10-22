@@ -170,6 +170,9 @@ class API {
         Note that $r[ 'resource' ] doesn't match necessarily the name of
         the resource, e.g. activities -> activity
 
+        Note that by setting $q[ 'limit' ] here, useResource will
+        understand it should loop to fully retrieve that resource
+
         @TODO Validate arguments
         @TODO Validate outputs
         @TODO include all resources
@@ -210,9 +213,10 @@ class API {
                 break;
             case 'members':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/members/";
+                $q[ 'limit' ] = $this->limit;
                 break;
             case 'member':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/members/{$r[ 'username' ]}";
+                $url = "{$this->host}teams/{$r[ 'team' ]}/members/{$r[ 'username' ]}/";
                 break;
             default:
                 return null;
@@ -298,7 +302,7 @@ class API {
     protected function useResource( $method, $r, $data ) {
         $result = array();
         $header = $this->getHeader( $r[ 'content_type' ] );
-        if ( !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
+        if ( isset( $data[ 'limit' ] && !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
         do {
             if ( $method == 'PUT' ) {
                 $url = $this->getResourceUrl( $r, null );
@@ -693,6 +697,21 @@ class API {
         return $this->createResource( $r, $q );
     }
 
+    /**
+        Remove a member from a team
+
+        @since 0.2.0
+    */
+    function deleteMember( $team, $username ) {
+        // TODO: It shouldn't assign the task to me
+        $r = array(
+            'resource' => 'member',
+            'content_type' => 'json',
+            'team' => $team,
+            'username' => $username
+        );
+        return $this->deleteResource( $r );
+    }
 
     // Validators
 
