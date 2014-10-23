@@ -105,9 +105,9 @@ class API {
     */
     function setAccount( $host, $user, $apikey ) {
         $this->validateAccount( $host, $user, $apikey );
-        if ( $this->host != $host && $this->apikey == $apikey ) {
+        if ( $this->host !== $host && $this->apikey === $apikey ) {
             throw new \InvalidArgumentException( 'You can\'t use the same API key on different hosts' );
-        } elseif ( $this->apikey != $apikey && $this->user == $user ) {
+        } elseif ( $this->apikey !== $apikey && $this->user === $user ) {
             throw new \InvalidArgumentException( 'You can\'t use the same API key with different users' );
         }
         $this->user = $user;
@@ -152,7 +152,7 @@ class API {
             "X-api-username: {$this->user}",
             "X-apikey: {$this->apikey}"
         );
-        if ( $ct == 'json' ) { $r = array_merge( $r, array(
+        if ( $ct === 'json' ) { $r = array_merge( $r, array(
             'Content-Type: application/json',
             'Accept: application/json'
         ) ); }
@@ -167,36 +167,41 @@ class API {
         indicates which API resource is the target. $q should be key -> value array
         matching the required query parameters.
 
+        Note that Amara's API takes POSTed data as JSON. Some queries may
+        work sending that data in query arguments, but some don't
+        (e.g. POSTing a new user).
+
+        In principle $q would only contain meta filters like limit or offset.
+
         Note that $r[ 'resource' ] doesn't match necessarily the name of
         the resource, e.g. activities -> activity
-
-        Note that by setting $q[ 'limit' ] here, useResource will
-        understand it should loop to fully retrieve that resource
 
         @TODO Validate arguments
         @TODO Validate outputs
         @TODO include all resources
+
+        @since 0.1.0
     */
     function getResourceUrl( $r, $q = array() ) {
+        foreach( $r as $key=>$value ) {
+            $r[ $key ] = urlencode( $value );
+        }
         $url = '';
         switch ( $r[ 'resource' ] ) {
             case 'activities':
                 $url = "{$this->host}activity/";
-                $q[ 'limit' ] = $this->limit;
                 break;
             case 'activity':
                 $url = "{$this->host}activity/{$r[ 'activity_id' ]}/";
                 break;
             case 'videos':
                 $url = "{$this->host}videos/";
-                $q[ 'limit' ] = $this->limit;
                 break;
             case 'video':
                 $url = "{$this->host}videos/{$r[ 'video_id' ]}/";
                 break;
             case 'languages':
                 $url = "{$this->host}videos/{$r[ 'video_id' ]}/languages/";
-                $q[ 'limit' ] = $this->limit;
                 break;
             case 'language':
                 $url = "{$this->host}videos/{$r[ 'video_id' ]}/languages/{$r[ 'language' ]}/";
@@ -206,17 +211,21 @@ class API {
                 break;
             case 'tasks':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/tasks/";
-                $q[ 'limit' ] = $this->limit;
                 break;
             case 'task':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/tasks/{$r[ 'task_id' ]}/";
                 break;
             case 'members':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/members/";
-                $q[ 'limit' ] = $this->limit;
+                break;
+            case 'safe-members':
+                $url = "{$this->host}teams/{$r[ 'team' ]}/safe-members/";
                 break;
             case 'member':
                 $url = "{$this->host}teams/{$r[ 'team' ]}/members/{$r[ 'username' ]}/";
+                break;
+            case 'users':
+                $url = "{$this->host}users/{$r[ 'username' ]}/";
                 break;
             default:
                 return null;
@@ -237,21 +246,18 @@ class API {
     protected function curl( $mode, $header, $url, $data = '' ) {
         $cr = curl_init();
         curl_setopt( $cr, CURLOPT_URL, $url );
-        curl_setopt( $cr, CURLOPT_RETURNTRANSFER, 1 ); # return string
+        curl_setopt( $cr, CURLOPT_RETURNTRANSFER, 1 );
         curl_setopt( $cr, CURLOPT_VERBOSE, $this->verbose_curl );
-        curl_setopt( $cr, CURLOPT_SSL_VERIFYPEER, false ); # skip SSL verification. no bueno.
+        curl_setopt( $cr, CURLOPT_SSL_VERIFYPEER, false );
         curl_setopt( $cr, CURLOPT_HTTPHEADER, $header );
         switch ( $mode ) {
             case 'GET':
                 break;
             case 'POST':
-                curl_setopt( $cr, CURLOPT_POST, 1 ); # post content
-                curl_setopt( $cr, CURLOPT_POSTFIELDS, http_build_query( $data ) ); # post content
-                break;
             case 'PUT':
-            	curl_setopt( $cr, CURLOPT_CUSTOMREQUEST, "PUT" );
-            	curl_setopt( $cr, CURLOPT_POSTFIELDS, $data );
-            	break;
+                curl_setopt( $cr, CURLOPT_CUSTOMREQUEST, $mode );
+                curl_setopt( $cr, CURLOPT_POSTFIELDS, $data );
+                break;
             case 'DELETE':
             	curl_setopt( $cr, CURLOPT_CUSTOMREQUEST, "DELETE" );
             	break;
@@ -260,6 +266,7 @@ class API {
         }
         $result = $this->curlTry( $cr );
         curl_close( $cr );
+        // TODO: log non GET responses here.
         return $result;
     }
 
@@ -299,46 +306,39 @@ class API {
         the behavior of certain HTTP methods later on, without having to
         duplicate the rest of useResource.
     */
-    protected function useResource( $method, $r, $data ) {
+    protected function useResource( $method, $r, $q = null, $data = null ) {
         $result = array();
         $header = $this->getHeader( $r[ 'content_type' ] );
-        if ( isset( $data[ 'limit' ] ) && !isset( $data[ 'offset' ] ) ) { $data[ 'offset' ] = 0; }
+        if ( isset( $q[ 'limit' ] ) && !isset( $q[ 'offset' ] ) ) { $q[ 'offset' ] = 0; }
+        if ( isset( $data ) && $r[ 'content_type' ] === 'json' ) { $data = json_encode( $data ); }
         do {
-            if ( $method == 'PUT' ) {
-                $url = $this->getResourceUrl( $r, null );
-                if ( $r[ 'content_type' ] == 'json' ) { $data = json_encode( $data ); }
-            } else {
-                $url = $this->getResourceUrl( $r, $data );
-            }
+            $url = $this->getResourceUrl( $r, $q );
             $response = $this->curl( $method, $header, $url, $data );
-            $resource_data = json_decode( $response );
-            if ( json_last_error() != JSON_ERROR_NONE ) { return $response; }
-            if ( $method != 'GET' || !isset( $resource_data->objects ) ) { return $resource_data; }
-            if ( !isset( $resource_data->objects ) ) {
-                throw new \UnexpectedValueException( 'Traversable resource didn\'t return an \'objects\' array' );
-            } elseif ( !is_array( $resource_data->objects ) ) {
-                throw new \UnexpectedValueException( 'Traversable resource\'s \'objects\' property is not an array' );
-            }
+            $result_chunk = json_decode( $response );
+            if ( json_last_error() != JSON_ERROR_NONE ) { return $response; } // It's not JSON, just deliver as-is.
+            if ( $method !== 'GET' || !isset( $result_chunk->objects ) ) { return $result_chunk; } // We can't loop this, deliver JSON.
+            if ( !is_array( $resource_data->objects ) ) { throw new \UnexpectedValueException( 'Traversable resource\'s \'objects\' property is not an array' ); }
+            // We have to loop -- merge and offset
             $result = array_merge( $result, $resource_data->objects );
-            $data[ 'offset' ] += $this->limit;
-        } while( $resource_data->meta->next && $data[ 'offset' ] < $resource_data->meta->total_count );
+            $q[ 'offset' ] += $this->limit;
+        } while( $resource_data->meta->next && $q[ 'offset' ] < $resource_data->meta->total_count );
         return $result;
     }
 
-    protected function getResource( $r, $data = null ) {
-        return $this->useResource( 'GET', $r, $data );
+    protected function getResource( $r, $q = null, $data = null ) {
+        return $this->useResource( 'GET', $r, $q, $data );
     }
 
-    protected function createResource( $r, $data = null ) {
-        return $this->useResource( 'POST', $r, $data );
+    protected function createResource( $r, $q = null, $data = null ) {
+        return $this->useResource( 'POST', $r, $q, $data );
     }
 
-    protected function setResource( $r, $data = null ) {
-        return $this->useResource( 'PUT', $r, $data );
+    protected function setResource( $r, $q = null, $data = null ) {
+        return $this->useResource( 'PUT', $r, $q, $data );
     }
 
-    protected function deleteResource( $r, $data = null ) {
-        return $this->useResource( 'DELETE', $r, $data );
+    protected function deleteResource( $r, $q = null, $data = null ) {
+        return $this->useResource( 'DELETE', $r, $q, $data );
     }
 
     // VIDEO LANGUAGE RESOURCE
@@ -356,14 +356,14 @@ class API {
 
         @since 0.1.0
     */
-    function getLanguageInfo( $id, $language ) {
-        $r = array(
+    function getLanguageInfo( $r ) {
+        $res = array(
             'resource' => 'language',
             'content_type' => 'json',
-            'video_id' => $id,
-            'language' => $language
+            'video_id' => $r[ 'video_id' ],
+            'language' => $r[ 'language' ]
         );
-        return $this->getResource( $r );
+        return $this->getResource( $res );
     }
 
     /**
@@ -401,17 +401,18 @@ class API {
 
         @since 0.1.0
     */
-    function getVideos( $params = array() ) {
-        $r = array(
+    function getVideos( $r = array() ) {
+        $res = array(
             'resource' => 'videos',
             'content_type' => 'json',
         );
-        $q = array(
-            'team' => isset( $params[ 'team' ] ) ? $params[ 'team' ] : null,
-            'project' => isset( $params[ 'project' ] ) ? $params[ 'project' ] : null,
-            'offset' => isset( $params[ 'offset' ] ) ? $params[ 'offset' ] : null
+        $query = array(
+            'team' => isset( $r[ 'team' ] ) ? $r[ 'team' ] : null,
+            'project' => isset( $r[ 'project' ] ) ? $r[ 'project' ] : null,
+            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
+            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
         );
-        return $this->getResource( $r, $q );
+        return $this->getResource( $res, $query );
     }
 
     /**
@@ -422,24 +423,24 @@ class API {
 
         @since 0.1.0
     */
-    function getVideoInfo( $video_id, $params = array() ) {
-        if ( $this->isValidVideoID( $video_id ) ) {
-            $r = array(
+    function getVideoInfo( $r = array() ) {
+        if ( $this->isValidVideoID( $r[ 'video_id' ] ) ) {
+            $res = array(
                 'resource' => 'video',
                 'content_type' => 'json',
-                'video_id' => $video_id
+                'video_id' => $r[ 'video_id' ]
             );
             $q = array();
-        } elseif ( isset( $params[ 'video_url' ] ) && $params[ 'video_url' ] !== null ) {
-            $r = array(
+        } elseif ( isset( $r[ 'video_url' ] ) && $r[ 'video_url' ] !== null ) {
+            $res = array(
                 'resource' => 'videos',
                 'content_type' => 'json'
             );
-            $q = array(
-                'video_url' => isset( $params[ 'video_url' ] ) ? $params[ 'video_url' ] : null
+            $query = array(
+                'video_url' => isset( $r[ 'video_url' ] ) ? $r[ 'video_url' ] : null
             );
         }
-        return $this->getResource( $r, $q );
+        return $this->getResource( $res, $query );
     }
 
     /**
@@ -449,17 +450,17 @@ class API {
 
         @since 0.1.0
     */
-    function moveVideo( $video_id, $params ) {
-        $r = array(
+    function moveVideo( $r ) {
+        $res = array(
             'resource' => 'video',
             'content_type' => 'json',
-            'video_id' => $video_id
+            'video_id' => $r[ 'video_id' ]
         );
-        $q = array(
-            'team' => $params[ 'team ' ],
-            'project' => $params[ 'project' ]
+        $query = array(
+            'team' => $r[ 'team ' ],
+            'project' => $r[ 'project' ]
         );
-        return $this->setResource( $r, $q );
+        return $this->setResource( $res, $query );
     }
 
     // ACTIVITY RESOURCE
@@ -475,20 +476,22 @@ class API {
 
         @since 0.1.0
     */
-    function getActivities( $params = array() ) {
-        $r = array(
+    function getActivities( $r = array() ) {
+        $res = array(
             'resource' => 'activities',
             'content_type' => 'json'
         );
-        $q = array(
-            'team' => isset( $params[ 'team' ] ) ? $params[ 'team' ] : null,
-            'video' => isset( $params[ 'video_id' ] ) ? $params[ 'video_id' ] : null,
-            'type' => isset( $params[ 'type' ] ) ? $params[ 'type' ] : null,
-            'language' => isset( $params[ 'language' ] ) ? $params[ 'language' ] : null,
-            'before' => isset( $params[ 'before' ] ) ? $params[ 'before' ] : null,
-            'after' => isset( $params[ 'after' ] ) ? $params[ 'after' ] : null
+        $query = array(
+            'team' => isset( $r[ 'team' ] ) ? $r[ 'team' ] : null,
+            'video' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
+            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
+            'language' => isset( $r[ 'language' ] ) ? $r[ 'language' ] : null,
+            'before' => isset( $r[ 'before' ] ) ? $r[ 'before' ] : null,
+            'after' => isset( $r[ 'after' ] ) ? $r[ 'after' ] : null,
+            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
+            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
         );
-        return $this->getResource( $r, $q );
+        return $this->getResource( $res, $query );
     }
 
     /**
@@ -496,13 +499,13 @@ class API {
 
         @since 0.1.0
     */
-    function getActivity( $activity_id ) {
-        $r = array(
+    function getActivity( $r ) {
+        $res = array(
             'resource' => 'activity',
             'content_type' => 'json',
-            'activity_id' => $activity_id
+            'activity_id' => $r[ 'activity_id' ]
         );
-        return $this->getResource( $r );
+        return $this->getResource( $res );
     }
 
     // TASK RESOURCE
@@ -513,23 +516,25 @@ class API {
 
         @since 0.1.0
     */
-    function getTasks( $team, $params = array() ) {
-        $r = array(
+    function getTasks( $r ) {
+        $res = array(
             'resource' => 'tasks',
             'content_type' => 'json',
-            'team' => $team,
+            'team' => $r[ 'team' ],
         );
-        $q = array(
-            'video_id' => isset( $params[ 'video_id' ] ) ? $params[ 'video_id' ] : null,
-            'type' => isset( $params[ 'type' ] ) ? $params[ 'type' ] : null,
-            'assignee' => isset( $params[ 'assignee' ] ) ? $params[ 'assignee' ] : null,
-            'priority' => isset( $params[ 'priority' ] ) ? $params[ 'priority' ] : null,
-            'order_by' => isset( $params[ 'order_by' ] ) ? $params[ 'order_by' ] : null,
-            'completed' => isset( $params[ 'completed' ] ) ? $params[ 'completed' ] : null,
-            'completed_before' => isset( $params[ 'completed_before' ] ) ? $params[ 'completed_before' ] : null,
-            'open' => isset( $params[ 'open' ] ) ? $params[ 'open' ] : null
+        $query = array(
+            'video_id' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
+            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
+            'assignee' => isset( $r[ 'assignee' ] ) ? $r[ 'assignee' ] : null,
+            'priority' => isset( $r[ 'priority' ] ) ? $r[ 'priority' ] : null,
+            'order_by' => isset( $r[ 'order_by' ] ) ? $r[ 'order_by' ] : null,
+            'completed' => isset( $r[ 'completed' ] ) ? $r[ 'completed' ] : null,
+            'completed_before' => isset( $r[ 'completed_before' ] ) ? $r[ 'completed_before' ] : null,
+            'open' => isset( $r[ 'open' ] ) ? $r[ 'open' ] : null,
+            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
+            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
         );
-        return $this->getResource( $r, $q );
+        return $this->getResource( $res, $query );
     }
 
     /**
@@ -537,14 +542,14 @@ class API {
 
         @since 0.1.0
     */
-    function getTaskInfo( $team, $task_id ) {
+    function getTaskInfo( $r ) {
         $r = array(
             'resource' => 'task',
             'content_type' => 'json',
-            'team' => $team,
-            'task_id' => $task_id
+            'team' => $r[ 'team' ],
+            'task_id' => $r[ 'task_id' ]
         );
-        return $this->getResource( $r );
+        return $this->getResource( $res );
     }
 
     /**
@@ -556,29 +561,29 @@ class API {
 
         @since 0.1.0
     */
-    function createTask( $team, $params, &$lang_info = null ) {
-        if ( !in_array( $params[ 'task' ], array( 'Subtitle', 'Translate', 'Review', 'Approve' ) ) ) { return null; }
-        if ( !isset( $params[ 'version_no' ] ) && in_array( $params[ 'task' ], array( 'Review', 'Approve' ) ) ) {
-            if ( $lang_info == null ) { $lang_info = $this->getLanguageInfo( $id, $language ); }
-            $params[ 'version_no' ] = $this->getLastVersion( $lang_info );
+    function createTask( $r, &$lang_info = null ) {
+        if ( !in_array( $r[ 'type' ], array( 'Subtitle', 'Translate', 'Review', 'Approve' ) ) ) { return null; }
+        if ( !isset( $r[ 'version_no' ] ) && in_array( $r[ 'type' ], array( 'Review', 'Approve' ) ) ) {
+            if ( $lang_info === null ) { $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] ); }
+            $r[ 'version_no' ] = $this->getLastVersion( $lang_info );
         }
         // TODO: It shouldn't assign the task to me
-        $r = array(
+        $res = array(
             'resource' => 'tasks',
             'content_type' => 'json',
-            'team' => $team
+            'team' => $r[ 'team' ]
         );
-        $q = array(
-            'video_id' => isset( $params[ 'video_id' ] ) ? $params[ 'video_id' ] : null,
-            'language' => isset( $params[ 'language' ] ) ? $params[ 'language' ] : null,
-            'type' => isset( $params[ 'task' ] ) ? $params[ 'task' ] : null,
-            'assignee' => isset( $params[ 'assignee' ] ) ? $params[ 'assignee' ] : null,
-            'priority' => isset( $params[ 'priority' ] ) ? $params[ 'priority' ] : null,
-            'completed' => isset( $params[ 'completed' ] ) ? $params[ 'completed' ] : null,
-            'approved' => isset( $params[ 'approved' ] ) ? $params[ 'approved' ] : null,
-            'version_no' => isset( $params[ 'version_no' ] ) ? $params[ 'version_no' ] : null
+        $query = array(
+            'video_id' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
+            'language' => isset( $r[ 'language_code' ] ) ? $r[ 'language_code' ] : null,
+            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
+            'assignee' => isset( $r[ 'assignee' ] ) ? $r[ 'assignee' ] : null,
+            'priority' => isset( $r[ 'priority' ] ) ? $r[ 'priority' ] : null,
+            'completed' => isset( $r[ 'completed' ] ) ? $r[ 'completed' ] : null,
+            'approved' => isset( $r[ 'approved' ] ) ? $r[ 'approved' ] : null,
+            'version_no' => isset( $r[ 'version_no' ] ) ? $r[ 'version_no' ] : null
         );
-        return $this->createResource( $r, $q );
+        return $this->createResource( $res, $query );
     }
 
     /**
@@ -586,14 +591,14 @@ class API {
 
         @since 0.1.0
     */
-    function deleteTask( $team, $task_id ) {
-        $r = array(
+    function deleteTask( $r ) {
+        $res = array(
             'resource' => 'task',
             'content_type' => 'json',
-            'team' => $team,
-            'task_id' => $task_id
+            'team' => $r[ 'team' ],
+            'task_id' => $r[ 'task_id' ]
         );
-        return $this->deleteResource( $r );
+        return $this->deleteResource( $res );
     }
 
     // SUBTITLES RESOURCE
@@ -612,24 +617,24 @@ class API {
 
         @since 0.1.0
     */
-    function getSubtitle( $video_id, $language, $params, &$lang_info = null ) {
-        if ( !isset( $params[ 'version' ] ) ) {
+    function getSubtitle( $r, &$lang_info = null ) {
+        if ( !isset( $r[ 'version' ] ) ) {
             if ( $lang_info === null ) {
-                $lang_info = $this->getLanguageInfo( $video_id, $language );
+                $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] );
             }
-            $params[ 'version' ] = $this->getLastVersion( $lang_info );
+            $r[ 'version' ] = $this->getLastVersion( $lang_info );
         }
-        if ( $params[ 'version' ] === null ) { return null; }
-        $r = array(
+        if ( $r[ 'version' ] === null ) { return null; }
+        $res = array(
             'resource' => 'subtitles',
-            'video_id' => $video_id,
-            'language' => $language,
+            'video_id' => $r[ 'video_id' ],
+            'language' => $r[ 'language_code' ],
         );
-        $q = array(
-            'format' => isset( $params[ 'format' ] ) ? $params[ 'format' ] : 0,
-            'version' => isset( $params[ 'version' ] ) ? $params[ 'version' ] : 0
+        $query = array(
+            'format' => isset( $r[ 'format' ] ) ? $r[ 'format' ] : 0,
+            'version' => isset( $r[ 'version' ] ) ? $r[ 'version' ] : 0
         );
-        return $this->getResource( $r, $q );
+        return $this->getResource( $res, $query );
     }
 
    /**
@@ -645,56 +650,104 @@ class API {
 
         @since 0.1.0
     */
-    function uploadSubtitle( $video_id, $language, $params, &$lang_info = null ) {
+    function uploadSubtitle( $r, &$lang_info = null ) {
         // Create the language if it doesn't exist
-        if ( !$lang_info && !$lang_info = $this->getLanguageInfo( $video_id, $language ) ) {
-            $r = array(
+        if ( !$lang_info && !$lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] ) ) {
+            $res = array(
                 'resource' => 'languages',
                 'content_type' => 'json',
-                'video_id' => $video_id
+                'video_id' => $r[ 'video_id' ]
             );
-            $q = array(
-                'language_code' => $language
+            $query = array(
+                'language_code' => $r[ 'language_code' ]
             );
-            $this->createResource( $r, $q );
-            $lang_info = $this->getLanguageInfo( $video_id, $language );
+            $this->createResource( $res, $query );
+            $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] );
         }
-        $r = array(
+        $res = array(
             'resource' => 'subtitles',
             'content_type' => 'json',
-            'video_id' => $video_id,
-            'language' => $language,
+            'video_id' => $r[ 'video_id' ],
+            'language' => $r[ 'language_code' ],
         );
-        $q = array(
-            'subtitles' => isset( $params[ 'subtitles' ] ) ? $params[ 'subtitles' ] : null,
-            'sub_format' => isset( $params[ 'sub_format' ] ) ? $params[ 'sub_format' ] : null,
-            'title' => isset( $params[ 'title' ] ) ? $params[ 'title' ] : $lang_info->title,
-            'description' => isset( $params[ 'description' ] ) ? $params[ 'description' ] : $lang_info->description,
-            'is_complete' => isset( $params[ 'complete' ] ) ? $params[ 'complete' ] : null
+        $query = array(
+            'subtitles' => isset( $r[ 'subtitles' ] ) ? $r[ 'subtitles' ] : null,
+            'sub_format' => isset( $r[ 'sub_format' ] ) ? $r[ 'sub_format' ] : null,
+            'title' => isset( $r[ 'title' ] ) ? $r[ 'title' ] : $lang_info->title,
+            'description' => isset( $r[ 'description' ] ) ? $r[ 'description' ] : $lang_info->description,
+            'is_complete' => isset( $r[ 'complete' ] ) ? $r[ 'complete' ] : null
         );
-        return $this->setResource( $r, $q );
+        return $this->setResource( $res, $query );
     }
 
     // TEAM MEMBER RESOURCE
     // http://amara.readthedocs.org/en/latest/api.html#team-member-resource
 
     /**
-        Add a new member to a team
+        Get the list of members in a team
 
         @since 0.2.0
     */
-    function addMember( $team, $params ) {
+    function getMembers( $r ) {
         // TODO: It shouldn't assign the task to me
-        $r = array(
+        $res = array(
             'resource' => 'members',
             'content_type' => 'json',
-            'team' => $team
+            'team' => $r[ 'team' ]
         );
-        $q = array(
-            'username' => $params[ 'username' ],
-            'role' => $params[ 'role' ]
+        $query = array(
+            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
+            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
         );
-        return $this->createResource( $r, $q );
+        return $this->getResource( $res, $query );
+    }
+
+    /**
+        Add a new partner member to a partner team
+
+        This is the "unsafe" method that allows to transfer
+        users directly between "partner" teams without notifying/inviting them.
+
+        It won't work if the user is not in a "partner" team,
+        or the destination teams isn't set as a "partner" team.
+        This is configured by Amara's admins.
+
+        @since 0.2.0
+    */
+    function addPartnerMember( $r ) {
+        $res = array(
+            'resource' => 'members',
+            'content_type' => 'json',
+            'team' => $r[ 'team' ]
+        );
+        $query = array();
+        $data = json_encode( array(
+            'username' => $r[ 'username' ],
+            'role' => $r[ 'role' ]
+        ) );
+        return $this->createResource( $r, $q, $data );
+    }
+
+    /**
+        Invite a user to a team
+
+        This is the safe method. It will send the user an invitation
+        to join the team, which the user can refuse.
+
+        @since 0.2.0
+    */
+    function addMember( $r ) {
+        $res = array(
+            'resource' => 'safe-members',
+            'content_type' => 'json',
+            'team' => $r[ 'team' ]
+        );
+        $query = array();
+        $data = json_encode( array(
+            'username' => $r[ 'username' ],
+            'role' => $r[ 'role' ]
+        ) );
+        return $this->createResource( $r, $q, $data );
     }
 
     /**
@@ -702,18 +755,35 @@ class API {
 
         @since 0.2.0
     */
-    function deleteMember( $team, $username ) {
-        // TODO: It shouldn't assign the task to me
-        $r = array(
+    function deleteMember( $r ) {
+        $res = array(
             'resource' => 'member',
             'content_type' => 'json',
-            'team' => $team,
-            'username' => $username
+            'team' => $r[ 'team' ],
+            'username' => $r[ 'username' ]
         );
-        return $this->deleteResource( $r );
+        return $this->deleteResource( $res );
     }
 
-    // Validators
+    // USER RESOURCE
+    // http://amara.readthedocs.org/en/latest/api.html#user-resource
+
+    /**
+        Get user detail
+
+        @since 0.2.0
+    */
+    function getUser( $r ) {
+        $res = array(
+            'resource' => 'users',
+            'content_type' => 'json',
+            'username' => $r[ 'username' ]
+        );
+        return $this->getResource( $res );
+    }
+
+
+    // VALIDATORS
 
     /**
         Validate API keys
@@ -726,13 +796,25 @@ class API {
         @since 0.1.0
     */
     function validateAccount( $host, $user, $apikey ) {
-        if ( strlen( $apikey ) != 40 ) {
+        if ( strlen( $apikey ) !== 40 ) {
             throw new \LengthException( 'The API key is not 40 characters long' );
         } elseif ( preg_match( '/^[0-9a-f]*$/', $apikey ) !== 1 ) {
             throw new \InvalidArgumentException( 'The API key should contain lowercase hexadecimal characters only' );
         }
         return true;
     }
+
+    /**
+        Validate an username
+
+        This method will eventually support using a cached userlist
+
+        @since 0.2.0
+    */
+    function isValidUser( $r, $use_cache = null ) {
+        return $this->getUser( array( 'username' => $r ) );
+    }
+
 
     /**
         Check if an object has the expected methods
@@ -742,7 +824,7 @@ class API {
     function isValidObject( $object, $valid_methods ) {
         if ( !is_object( $object ) || !is_array( $valid_methods) ) { return null; }
         $obj_methods = get_class_methods( $object );
-        if ( count( array_intersect( $valid_methods, $obj_methods ) ) == count( $valid_methods ) ) {
+        if ( count( array_intersect( $valid_methods, $obj_methods ) ) === count( $valid_methods ) ) {
             return true;
         }
         return false;
@@ -753,15 +835,24 @@ class API {
 
         @since 0.1.0
     */
-    function isValidVideoID( $id ) {
-        if ( strlen( $id ) != 12 ) {
+    function isValidVideoID( $video_id ) {
+        if ( strlen( $video_id ) !== 12 ) {
             return false;
-        } elseif ( preg_match( '/^[A-Za-z0-9]*$/', $id ) !== 1 ) {
+        } elseif ( preg_match( '/^[A-Za-z0-9]*$/', $video_id ) !== 1 ) {
             return false;
         }
         return true;
     }
 
+    /**
+        Check if a variable is a valid role string
+
+        @since 0.2.0
+    */
+    function isValidRole( $role ) {
+        if ( !isset( $role ) || !is_string( $role ) ) { return false; }
+        return in_array( $role, array( 'admin', 'manager', 'owner', 'contributor' ) );
+    }
 }
 
 /**
