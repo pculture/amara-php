@@ -725,7 +725,7 @@ class API {
             'username' => $r[ 'username' ],
             'role' => $r[ 'role' ]
         ) );
-        return $this->createResource( $r, $q, $data );
+        return $this->createResource( $res, $query, $data );
     }
 
     /**
@@ -747,7 +747,7 @@ class API {
             'username' => $r[ 'username' ],
             'role' => $r[ 'role' ]
         ) );
-        return $this->createResource( $r, $q, $data );
+        return $this->createResource( $res, $query, $data );
     }
 
     /**
