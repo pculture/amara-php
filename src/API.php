@@ -720,11 +720,12 @@ class API {
             'content_type' => 'json',
             'team' => $r[ 'team' ]
         );
-        $query = array();
-        $data = json_encode( array(
+        $query = array(
+        );
+        $data = array(
             'username' => $r[ 'username' ],
             'role' => $r[ 'role' ]
-        ) );
+        );
         return $this->createResource( $res, $query, $data );
     }
 
@@ -743,10 +744,10 @@ class API {
             'team' => $r[ 'team' ]
         );
         $query = array();
-        $data = json_encode( array(
+        $data = array(
             'username' => $r[ 'username' ],
             'role' => $r[ 'role' ]
-        ) );
+        );
         return $this->createResource( $res, $query, $data );
     }
 
