@@ -317,11 +317,11 @@ class API {
             $result_chunk = json_decode( $response );
             if ( json_last_error() != JSON_ERROR_NONE ) { return $response; } // It's not JSON, just deliver as-is.
             if ( $method !== 'GET' || !isset( $result_chunk->objects ) ) { return $result_chunk; } // We can't loop this, deliver JSON.
-            if ( !is_array( $resource_data->objects ) ) { throw new \UnexpectedValueException( 'Traversable resource\'s \'objects\' property is not an array' ); }
+            if ( !is_array( $result_chunk->objects ) ) { throw new \UnexpectedValueException( 'Traversable resource\'s \'objects\' property is not an array' ); }
             // We have to loop -- merge and offset
-            $result = array_merge( $result, $resource_data->objects );
+            $result = array_merge( $result, $result_chunk->objects );
             $q[ 'offset' ] += $this->limit;
-        } while( $resource_data->meta->next && $q[ 'offset' ] < $resource_data->meta->total_count );
+        } while( $result_chunk->meta->next && $q[ 'offset' ] < $result_chunk->meta->total_count );
         return $result;
     }
 
@@ -689,7 +689,6 @@ class API {
         @since 0.2.0
     */
     function getMembers( $r ) {
-        // TODO: It shouldn't assign the task to me
         $res = array(
             'resource' => 'members',
             'content_type' => 'json',
@@ -783,6 +782,29 @@ class API {
         return $this->getResource( $res );
     }
 
+    /**
+        Returns an array of user objects for the given list of users
+
+        @since 0.3.0
+    */
+    function getUsers( $users ) {
+        if ( !is_array( $users ) || empty( $users ) ) { return null; }
+        $result = array();
+        for ( $i = 0; $i < count( $users ); $i++ ) {
+            $res = array(
+                'resource' => 'users',
+                'content_type' => 'json',
+                'username' => $users[ $i ]
+            );
+            $user = $this->getResource( $res );
+            if ( !is_object( $user ) ) {
+                // TODO: Handle/Log error.
+                continue;
+            }
+            $result[ $i ] = $user;
+        }
+        return $result;
+    }
 
     // VALIDATORS
 
