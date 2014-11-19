@@ -564,7 +564,7 @@ class API {
     function createTask( $r, &$lang_info = null ) {
         if ( !in_array( $r[ 'type' ], array( 'Subtitle', 'Translate', 'Review', 'Approve' ) ) ) { return null; }
         if ( !isset( $r[ 'version_no' ] ) && in_array( $r[ 'type' ], array( 'Review', 'Approve' ) ) ) {
-            if ( $lang_info === null ) { $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] ); }
+            if ( $lang_info === null ) { $lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ); }
             $r[ 'version_no' ] = $this->getLastVersion( $lang_info );
         }
         // TODO: It shouldn't assign the task to me
@@ -655,7 +655,7 @@ class API {
     */
     function uploadSubtitle( $r, &$lang_info = null ) {
         // Create the language if it doesn't exist
-        if ( !$lang_info && !$lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] ) ) {
+        if ( !$lang_info && !$lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ) ) {
             $res = array(
                 'resource' => 'languages',
                 'content_type' => 'json',
@@ -665,7 +665,7 @@ class API {
                 'language_code' => $r[ 'language_code' ]
             );
             $this->createResource( $res, $query );
-            $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] );
+            $lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) );
         }
         $res = array(
             'resource' => 'subtitles',
