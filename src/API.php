@@ -361,7 +361,7 @@ class API {
             'resource' => 'language',
             'content_type' => 'json',
             'video_id' => $r[ 'video_id' ],
-            'language' => $r[ 'language' ]
+            'language' => $r[ 'language_code' ]
         );
         return $this->getResource( $res );
     }
