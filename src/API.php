@@ -308,7 +308,7 @@ class API {
     */
     protected function useResource( $method, $r, $q = null, $data = null ) {
         $result = array();
-        $header = $this->getHeader( $r[ 'content_type' ] );
+        $header = $this->getHeader( isset( $r[ 'content_type' ] ) ? $r[ 'content_type' ] : null );
         if ( isset( $q[ 'limit' ] ) && !isset( $q[ 'offset' ] ) ) { $q[ 'offset' ] = 0; }
         if ( isset( $data ) && $r[ 'content_type' ] === 'json' ) { $data = json_encode( $data ); }
         do {
@@ -620,7 +620,10 @@ class API {
     function getSubtitle( $r, &$lang_info = null ) {
         if ( !isset( $r[ 'version' ] ) ) {
             if ( $lang_info === null ) {
-                $lang_info = $this->getLanguageInfo( $r[ 'video_id' ], $r[ 'language_code' ] );
+                $lang_info = $this->getLanguageInfo( array(
+                    'video_id' => $r[ 'video_id' ],
+                    'language_code' => $r[ 'language_code' ]
+                ) );
             }
             $r[ 'version' ] = $this->getLastVersion( $lang_info );
         }
