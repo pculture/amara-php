@@ -17,7 +17,7 @@ namespace AmaraPHPAccess;
  * @author Fran Ontanaya
  * @copyright 2014 Fran Ontanaya
  * @license GPLv3
- * @version 0.3.1
+ * @version 0.4.0
  * @uses DummyLogger
  *
  * @todo Caching
@@ -346,6 +346,22 @@ class API {
     // http://amara.readthedocs.org/en/latest/api.html#video-language-resource
 
     /**
+     * Listing video languages
+     *
+     * @since 0.4.0
+     */
+    function getVideoLanguages( $r ) {
+        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
+        $res = array(
+            'resource' => 'languages',
+            'content_type' => 'json',
+            'video_id' => $r[ 'video_id' ],
+        );
+        return $this->getResource( $res );
+    }
+
+
+    /**
      * Get information about a subtitle track in the specified language
      *
      * Notice the elements required in the resource definition:
@@ -355,9 +371,9 @@ class API {
      * other resource slugs as seen in the resource URL, e.g. language
      * not to confuse them with the query parameters themselves
      *
-     * @since 0.1.0
+     * @since 0.4.0
      */
-    function getLanguageInfo( $r ) {
+    function getVideoLanguage( $r ) {
         if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
         $res = array(
             'resource' => 'language',
@@ -559,7 +575,7 @@ class API {
     /**
      * Create a new task
      *
-     * You can pass the data from getLanguageInfo if you
+     * You can pass the data from getVideoLanguage if you
      * retrieved it earlier, so this doesn't make a new
      * request.
      *
@@ -569,7 +585,7 @@ class API {
         if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
         if ( !in_array( $r[ 'type' ], array( 'Subtitle', 'Translate', 'Review', 'Approve' ) ) ) { return null; }
         if ( !isset( $r[ 'version_no' ] ) && in_array( $r[ 'type' ], array( 'Review', 'Approve' ) ) ) {
-            if ( $lang_info === null ) { $lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ); }
+            if ( $lang_info === null ) { $lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ); }
             $r[ 'version_no' ] = $this->getLastVersion( $lang_info );
         }
         // TODO: It shouldn't assign the task to me
@@ -626,7 +642,7 @@ class API {
         if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
         if ( !isset( $r[ 'version' ] ) ) {
             if ( $lang_info === null ) {
-                $lang_info = $this->getLanguageInfo( array(
+                $lang_info = $this->getVideoLanguage( array(
                     'video_id' => $r[ 'video_id' ],
                     'language_code' => $r[ 'language_code' ]
                 ) );
@@ -662,7 +678,7 @@ class API {
     function uploadSubtitle( $r, &$lang_info = null ) {
         // Create the language if it doesn't exist
         if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
-        if ( !$lang_info && !$lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ) ) {
+        if ( !$lang_info && !$lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ) ) {
             $res = array(
                 'resource' => 'languages',
                 'content_type' => 'json',
@@ -672,7 +688,7 @@ class API {
                 'language_code' => $r[ 'language_code' ]
             );
             $this->createResource( $res, $query );
-            $lang_info = $this->getLanguageInfo( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) );
+            $lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) );
         }
         $res = array(
             'resource' => 'subtitles',
