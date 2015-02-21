@@ -24,9 +24,10 @@ namespace AmaraPHPAccess;
  * @todo Add relevant logging events
  * @todo Validate everything.
  * @todo Support HTTPS
+ * @todo Add DbC-style asserts
  */
 class API {
-    const VERSION = '0.3.1';
+    const VERSION = '0.4.1';
 
     /**
      * Credentials
@@ -79,6 +80,7 @@ class API {
     public $limit = 10;
     public $total_limit = 2000;
     public $verbose_curl = false;
+    public $assers_enabled = true;
 
     /**
      * Initialization
@@ -88,12 +90,9 @@ class API {
      *
      * @since 0.1.0
     */
-    function __construct( $host, $user, $apikey ) {
-        $this->host = $host;
-        $this->validateAccount( $host, $user, $apikey );
-        $this->user = $user;
-        $this->apikey = $apikey;
-        $this->logger = new DummyLogger();
+    function __construct($host, $user, $apikey) {
+        $this->setAccount($host, $user, $apikey);
+        $this->setLogger = new DummyLogger();
     }
 
     /**
@@ -103,12 +102,22 @@ class API {
      *
      * @since 0.1.0
      */
-    function setAccount( $host, $user, $apikey ) {
-        $this->validateAccount( $host, $user, $apikey );
-        if ( $this->host !== $host && $this->apikey === $apikey ) {
-            throw new \InvalidArgumentException( 'You can\'t use the same API key on different hosts' );
-        } elseif ( $this->apikey !== $apikey && $this->user === $user ) {
-            throw new \InvalidArgumentException( 'You can\'t use the same API key with different users' );
+    function setAccount($host, $user, $apikey) {
+        $this->validateAccount($host, $user, $apikey);
+        if ($this->host !== $host && $this->apikey === $apikey) {
+            $this->throwException(
+                'InvalidAPIAccount',
+                __METHOD__,
+                'Different API key when changing hosts',
+                'Same API key when changing hosts'
+            );
+        } elseif ($this->apikey !== $apikey && $this->user === $user) {
+            $this->throwException(
+                'InvalidAPIAccount',
+                __METHOD__,
+                'Different API key when changing usernames',
+                'Same API key when changing usernames'
+            );
         }
         $this->user = $user;
         $this->apikey = $apikey;
@@ -128,8 +137,8 @@ class API {
      *
      * @since 0.1.0
      */
-    function setLogger( $logger ) {
-        if ( !$this->isValidObject( $logger, array( 'emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug', 'log' ) ) ) {
+    function setLogger($logger) {
+        if (!$this->isValidObject($logger, array('emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug', 'log'))) {
             $this->logger = null;
             return false;
         }
@@ -147,15 +156,24 @@ class API {
      *
      * @since 0.1.0
      */
-    function getHeader( $ct ) {
+    function getHeader($ct = null) {
+        assert($this->validateAccount($this->host, $this->user, $this->apikey));
+        if (!is_string($ct) && !is_null($ct)) {
+            $this->throwException(
+                'InvalidArgumentType',
+                __METHOD__,
+                'string or null',
+                gettype($ct)
+            );
+        }
         $r = array(
             "X-api-username: {$this->user}",
             "X-apikey: {$this->apikey}"
         );
-        if ( $ct === 'json' ) { $r = array_merge( $r, array(
+        if ($ct === 'json') { $r = array_merge($r, array(
             'Content-Type: application/json',
             'Accept: application/json'
-        ) ); }
+        )); }
         return $r;
     }
 
@@ -173,7 +191,7 @@ class API {
      *
      * In principle $q would only contain meta filters like limit or offset.
      *
-     * Note that $r[ 'resource' ] doesn't match necessarily the name of
+     * Note that $r['resource'] doesn't match necessarily the name of
      * the resource, e.g. activities -> activity
      *
      * @TODO Validate arguments
@@ -182,56 +200,56 @@ class API {
      *
      * @since 0.1.0
      */
-    function getResourceUrl( $r, $q = array() ) {
-        foreach( $r as $key=>$value ) {
-            $r[$key] = urlencode( $value );
+    function getResourceUrl(array $r, $q = array()) {
+        foreach($r as $key=>$value) {
+            $r[$key] = urlencode($value);
         }
         $url = '';
-        switch ( $r[ 'resource' ] ) {
+        switch ($r['resource']) {
             case 'activities':
                 $url = "{$this->host}activity/";
                 break;
             case 'activity':
-                $url = "{$this->host}activity/{$r[ 'activity_id' ]}/";
+                $url = "{$this->host}activity/{$r['activity_id']}/";
                 break;
             case 'videos':
                 $url = "{$this->host}videos/";
                 break;
             case 'video':
-                $url = "{$this->host}videos/{$r[ 'video_id' ]}/";
+                $url = "{$this->host}videos/{$r['video_id']}/";
                 break;
             case 'languages':
-                $url = "{$this->host}videos/{$r[ 'video_id' ]}/languages/";
+                $url = "{$this->host}videos/{$r['video_id']}/languages/";
                 break;
             case 'language':
-                $url = "{$this->host}videos/{$r[ 'video_id' ]}/languages/{$r[ 'language' ]}/";
+                $url = "{$this->host}videos/{$r['video_id']}/languages/{$r['language']}/";
                 break;
             case 'subtitles':
-                $url = "{$this->host}videos/{$r[ 'video_id' ]}/languages/{$r[ 'language' ]}/subtitles/";
+                $url = "{$this->host}videos/{$r['video_id']}/languages/{$r['language']}/subtitles/";
                 break;
             case 'tasks':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/tasks/";
+                $url = "{$this->host}teams/{$r['team']}/tasks/";
                 break;
             case 'task':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/tasks/{$r[ 'task_id' ]}/";
+                $url = "{$this->host}teams/{$r['team']}/tasks/{$r['task_id']}/";
                 break;
             case 'members':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/members/";
+                $url = "{$this->host}teams/{$r['team']}/members/";
                 break;
             case 'safe-members':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/safe-members/";
+                $url = "{$this->host}teams/{$r['team']}/safe-members/";
                 break;
             case 'member':
-                $url = "{$this->host}teams/{$r[ 'team' ]}/members/{$r[ 'username' ]}/";
+                $url = "{$this->host}teams/{$r['team']}/members/{$r['username']}/";
                 break;
             case 'users':
-                $url = "{$this->host}users/{$r[ 'username' ]}/";
+                $url = "{$this->host}users/{$r['username']}/";
                 break;
             default:
                 return null;
         }
-        if ( isset( $q ) && !empty( $q ) ) {
-            $url .= '?' . http_build_query( $q );
+        if (isset($q) && !empty($q)) {
+            $url .= '?' . http_build_query($q);
         }
         return $url;
     }
@@ -243,29 +261,29 @@ class API {
      *
      * @since 0.1.0
      */
-    protected function curl( $mode, $header, $url, $data = '' ) {
+    protected function curl($mode, $header, $url, $data = '') {
         $cr = curl_init();
-        curl_setopt( $cr, CURLOPT_URL, $url );
-        curl_setopt( $cr, CURLOPT_RETURNTRANSFER, 1 );
-        curl_setopt( $cr, CURLOPT_VERBOSE, $this->verbose_curl );
-        curl_setopt( $cr, CURLOPT_SSL_VERIFYPEER, false );
-        curl_setopt( $cr, CURLOPT_HTTPHEADER, $header );
-        switch ( $mode ) {
+        curl_setopt($cr, CURLOPT_URL, $url);
+        curl_setopt($cr, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($cr, CURLOPT_VERBOSE, $this->verbose_curl);
+        curl_setopt($cr, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($cr, CURLOPT_HTTPHEADER, $header);
+        switch ($mode) {
             case 'GET':
                 break;
             case 'POST':
             case 'PUT':
-                curl_setopt( $cr, CURLOPT_CUSTOMREQUEST, $mode );
-                curl_setopt( $cr, CURLOPT_POSTFIELDS, $data );
+                curl_setopt($cr, CURLOPT_CUSTOMREQUEST, $mode);
+                curl_setopt($cr, CURLOPT_POSTFIELDS, $data);
                 break;
             case 'DELETE':
-            	curl_setopt( $cr, CURLOPT_CUSTOMREQUEST, "DELETE" );
+            	curl_setopt($cr, CURLOPT_CUSTOMREQUEST, "DELETE");
             	break;
             default:
                 return null;
         }
-        $result = $this->curlTry( $cr );
-        curl_close( $cr );
+        $result = $this->curlTry($cr);
+        curl_close($cr);
         // TODO: log non GET responses here.
         return $result;
     }
@@ -279,12 +297,12 @@ class API {
     * @since 0.1.0
     * @todo Ensure the way to check for error is correct
     */
-    protected function curlTry( $cr ) {
+    protected function curlTry($cr) {
         $retries = 0;
         do {
-            $result = curl_exec( $cr );
-            $retries++; if ( $retries > $this->retries ) { return null; }
-        } while( $result === false );
+            $result = curl_exec($cr);
+            $retries++; if ($retries > $this->retries) { return null; }
+        } while($result === false);
         return $result;
     }
 
@@ -306,40 +324,40 @@ class API {
      * the behavior of certain HTTP methods later on, without having to
      * duplicate the rest of useResource.
      */
-    protected function useResource( $method, $r, $q = null, $data = null ) {
+    protected function useResource($method, array $r, $q = null, $data = null) {
         $result = array();
-        $header = $this->getHeader( isset( $r[ 'content_type' ] ) ? $r[ 'content_type' ] : null );
-        if ( !isset( $q[ 'offset' ] ) ) { $q[ 'offset' ] = 0; }
-        if ( isset( $data ) && $r[ 'content_type' ] === 'json' ) { $data = json_encode( $data ); }
+        $header = $this->getHeader(isset($r['content_type']) ? $r['content_type'] : null);
+        if (!isset($q['offset'])) { $q['offset'] = 0; }
+        if (isset($data) && $r['content_type'] === 'json') { $data = json_encode($data); }
         do {
-            $url = $this->getResourceUrl( $r, $q );
-            $response = $this->curl( $method, $header, $url, $data );
-            $result_chunk = json_decode( $response );
-            if ( json_last_error() != JSON_ERROR_NONE ) { return $response; } // It's not JSON, just deliver as-is.
-            if ( $method !== 'GET' || !isset( $result_chunk->objects ) ) { return $result_chunk; } // We can't loop this, deliver JSON.
-            if ( !is_array( $result_chunk->objects ) ) { throw new \UnexpectedValueException( 'Traversable resource\'s \'objects\' property is not an array' ); }
+            $url = $this->getResourceUrl($r, $q);
+            $response = $this->curl($method, $header, $url, $data);
+            $result_chunk = json_decode($response);
+            if (json_last_error() != JSON_ERROR_NONE) { return $response; } // It's not JSON, just deliver as-is.
+            if ($method !== 'GET' || !isset($result_chunk->objects)) { return $result_chunk; } // We can't loop this, deliver JSON.
+            if (!is_array($result_chunk->objects)) { throw new \UnexpectedValueException('Traversable resource\'s \'objects\' property is not an array'); }
             // We have to loop -- merge and offset
-            $result = array_merge( $result, $result_chunk->objects );
-            if ( $result_chunk->meta->next === null ) { break; }
-            if ( isset( $q[ 'limit' ] ) ) { $q[ 'offset' ] += $this->limit; } // TODO: check this logic
-        } while( $result_chunk->meta->next + $q[ 'offset' ] < $result_chunk->meta->total_count );
+            $result = array_merge($result, $result_chunk->objects);
+            if ($result_chunk->meta->next === null) { break; }
+            if (isset($q['limit'])) { $q['offset'] += $this->limit; } // TODO: check this logic
+        } while($result_chunk->meta->next + $q['offset'] < $result_chunk->meta->total_count);
         return $result;
     }
 
-    protected function getResource( $r, $q = null, $data = null ) {
-        return $this->useResource( 'GET', $r, $q, $data );
+    protected function getResource(array $r, $q = null, $data = null) {
+        return $this->useResource('GET', $r, $q, $data);
     }
 
-    protected function createResource( $r, $q = null, $data = null ) {
-        return $this->useResource( 'POST', $r, $q, $data );
+    protected function createResource(array $r, $q = null, $data = null) {
+        return $this->useResource('POST', $r, $q, $data);
     }
 
-    protected function setResource( $r, $q = null, $data = null ) {
-        return $this->useResource( 'PUT', $r, $q, $data );
+    protected function setResource(array $r, $q = null, $data = null) {
+        return $this->useResource('PUT', $r, $q, $data);
     }
 
-    protected function deleteResource( $r, $q = null, $data = null ) {
-        return $this->useResource( 'DELETE', $r, $q, $data );
+    protected function deleteResource(array $r, $q = null, $data = null) {
+        return $this->useResource('DELETE', $r, $q, $data);
     }
 
     // VIDEO LANGUAGE RESOURCE
@@ -350,14 +368,14 @@ class API {
      *
      * @since 0.4.0
      */
-    function getVideoLanguages( $r ) {
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
+    function getVideoLanguages(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
         $res = array(
             'resource' => 'languages',
             'content_type' => 'json',
-            'video_id' => $r[ 'video_id' ],
-        );
-        return $this->getResource( $res );
+            'video_id' => $r['video_id'],
+       );
+        return $this->getResource($res);
     }
 
 
@@ -373,15 +391,15 @@ class API {
      *
      * @since 0.4.0
      */
-    function getVideoLanguage( $r ) {
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
+    function getVideoLanguage(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
         $res = array(
             'resource' => 'language',
             'content_type' => 'json',
-            'video_id' => $r[ 'video_id' ],
-            'language' => $r[ 'language_code' ]
-        );
-        return $this->getResource( $res );
+            'video_id' => $r['video_id'],
+            'language' => $r['language_code']
+       );
+        return $this->getResource($res);
     }
 
     /**
@@ -397,8 +415,16 @@ class API {
      *
      * @since 0.1.0
      */
-    function getLastVersion( $lang_info ) {
-        if ( isset( $lang_info->versions[0]->version_no ) ) {
+    function getLastVersion($lang_info) {
+        if (!is_object($lang_info)) {
+            $this->throwException(
+                'InvalidArgumentType',
+                __METHOD__,
+                'object',
+                gettype($lang_info)
+            );
+        }
+        if (isset($lang_info->versions[0]->version_no)) {
             return $lang_info->versions[0]->version_no;
         } else {
             return null;
@@ -414,23 +440,23 @@ class API {
      * Note that this can take a long time on teams/projects
      * with many videos. Capped by $this->total_limit.
      *
-     * Use $params[ 'offset' ] and your own loop
+     * Use $params['offset'] and your own loop
      * if you'd rather not wait for this method to finish.
      *
      * @since 0.1.0
     */
-    function getVideos( $r = array() ) {
+    function getVideos(array $r) {
         $res = array(
             'resource' => 'videos',
             'content_type' => 'json',
-        );
+       );
         $query = array(
-            'team' => isset( $r[ 'team' ] ) ? $r[ 'team' ] : null,
-            'project' => isset( $r[ 'project' ] ) ? $r[ 'project' ] : null,
-            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
-            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
-        );
-        return $this->getResource( $res, $query );
+            'team' => isset($r['team']) ? $r['team'] : null,
+            'project' => isset($r['project']) ? $r['project'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+       );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -441,25 +467,25 @@ class API {
      *
      * @since 0.1.0
      */
-    function getVideoInfo( $r = array() ) {
+    function getVideoInfo(array $r) {
         $query = array();
-        if ( isset( $r[ 'video_id' ] ) ) {
-            if (!$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
+        if (isset($r['video_id'])) {
+            if (!$this->isValidVideoID($r['video_id'])) { return null; }
             $res = array(
                 'resource' => 'video',
                 'content_type' => 'json',
-                'video_id' => $r[ 'video_id' ]
-            );
-        } elseif ( isset( $r[ 'video_url' ] ) && $r[ 'video_url' ] !== null ) {
+                'video_id' => $r['video_id']
+           );
+        } elseif (isset($r['video_url']) && $r['video_url'] !== null) {
             $res = array(
                 'resource' => 'videos',
                 'content_type' => 'json'
-            );
+           );
             $query = array(
-                'video_url' => isset( $r[ 'video_url' ] ) ? $r[ 'video_url' ] : null
-            );
+                'video_url' => isset($r['video_url']) ? $r['video_url'] : null
+           );
         }
-        return $this->getResource( $res, $query );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -469,18 +495,18 @@ class API {
      *
      * @since 0.1.0
      */
-    function moveVideo( $r ) {
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
+    function moveVideo(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
         $res = array(
             'resource' => 'video',
             'content_type' => 'json',
-            'video_id' => $r[ 'video_id' ]
-        );
+            'video_id' => $r['video_id']
+       );
         $query = array(
-            'team' => $r[ 'team ' ],
-            'project' => $r[ 'project' ]
-        );
-        return $this->setResource( $res, $query );
+            'team' => $r['team '],
+            'project' => $r['project']
+       );
+        return $this->setResource($res, $query);
     }
 
     // ACTIVITY RESOURCE
@@ -496,22 +522,22 @@ class API {
      *
      * @since 0.1.0
      */
-    function getActivities( $r = array() ) {
+    function getActivities(array $r = array()) {
         $res = array(
             'resource' => 'activities',
             'content_type' => 'json'
-        );
+       );
         $query = array(
-            'team' => isset( $r[ 'team' ] ) ? $r[ 'team' ] : null,
-            'video' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
-            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
-            'language' => isset( $r[ 'language' ] ) ? $r[ 'language' ] : null,
-            'before' => isset( $r[ 'before' ] ) ? $r[ 'before' ] : null,
-            'after' => isset( $r[ 'after' ] ) ? $r[ 'after' ] : null,
-            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
-            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
-        );
-        return $this->getResource( $res, $query );
+            'team' => isset($r['team']) ? $r['team'] : null,
+            'video' => isset($r['video_id']) ? $r['video_id'] : null,
+            'type' => isset($r['type']) ? $r['type'] : null,
+            'language' => isset($r['language']) ? $r['language'] : null,
+            'before' => isset($r['before']) ? $r['before'] : null,
+            'after' => isset($r['after']) ? $r['after'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+       );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -519,13 +545,13 @@ class API {
      *
      * @since 0.1.0
      */
-    function getActivity( $r ) {
+    function getActivity(array $r) {
         $res = array(
             'resource' => 'activity',
             'content_type' => 'json',
-            'activity_id' => $r[ 'activity_id' ]
-        );
-        return $this->getResource( $res );
+            'activity_id' => $r['activity_id']
+       );
+        return $this->getResource($res);
     }
 
     // TASK RESOURCE
@@ -536,25 +562,25 @@ class API {
      *
      * @since 0.1.0
      */
-    function getTasks( $r ) {
+    function getTasks(array $r) {
         $res = array(
             'resource' => 'tasks',
             'content_type' => 'json',
-            'team' => $r[ 'team' ],
-        );
+            'team' => $r['team'],
+       );
         $query = array(
-            'video_id' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
-            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
-            'assignee' => isset( $r[ 'assignee' ] ) ? $r[ 'assignee' ] : null,
-            'priority' => isset( $r[ 'priority' ] ) ? $r[ 'priority' ] : null,
-            'order_by' => isset( $r[ 'order_by' ] ) ? $r[ 'order_by' ] : null,
-            'completed' => isset( $r[ 'completed' ] ) ? $r[ 'completed' ] : null,
-            'completed_before' => isset( $r[ 'completed_before' ] ) ? $r[ 'completed_before' ] : null,
-            'open' => isset( $r[ 'open' ] ) ? $r[ 'open' ] : null,
-            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
-            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
-        );
-        return $this->getResource( $res, $query );
+            'video_id' => isset($r['video_id']) ? $r['video_id'] : null,
+            'type' => isset($r['type']) ? $r['type'] : null,
+            'assignee' => isset($r['assignee']) ? $r['assignee'] : null,
+            'priority' => isset($r['priority']) ? $r['priority'] : null,
+            'order_by' => isset($r['order_by']) ? $r['order_by'] : null,
+            'completed' => isset($r['completed']) ? $r['completed'] : null,
+            'completed_before' => isset($r['completed_before']) ? $r['completed_before'] : null,
+            'open' => isset($r['open']) ? $r['open'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+       );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -562,14 +588,14 @@ class API {
      *
      * @since 0.1.0
      */
-    function getTaskInfo( $r ) {
+    function getTaskInfo(array $r) {
         $r = array(
             'resource' => 'task',
             'content_type' => 'json',
-            'team' => $r[ 'team' ],
-            'task_id' => $r[ 'task_id' ]
-        );
-        return $this->getResource( $res );
+            'team' => $r['team'],
+            'task_id' => $r['task_id']
+       );
+        return $this->getResource($res);
     }
 
     /**
@@ -580,31 +606,33 @@ class API {
      * request.
      *
      * @since 0.1.0
+     * @todo Log notice on invalid lang_info
      */
-    function createTask( $r, &$lang_info = null ) {
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
-        if ( !in_array( $r[ 'type' ], array( 'Subtitle', 'Translate', 'Review', 'Approve' ) ) ) { return null; }
-        if ( !isset( $r[ 'version_no' ] ) && in_array( $r[ 'type' ], array( 'Review', 'Approve' ) ) ) {
-            if ( $lang_info === null ) { $lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ); }
-            $r[ 'version_no' ] = $this->getLastVersion( $lang_info );
+    function createTask(array $r, &$lang_info = null) {
+        if (!is_object($lang_info)) { $lang_info = null; }
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        if (!in_array($r['type'], array('Subtitle', 'Translate', 'Review', 'Approve'))) { return null; }
+        if (!isset($r['version_no']) && in_array($r['type'], array('Review', 'Approve'))) {
+            if ($lang_info === null) { $lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code'])); }
+            $r['version_no'] = $this->getLastVersion($lang_info);
         }
         // TODO: It shouldn't assign the task to me
         $res = array(
             'resource' => 'tasks',
             'content_type' => 'json',
-            'team' => $r[ 'team' ]
-        );
+            'team' => $r['team']
+       );
         $query = array(
-            'video_id' => isset( $r[ 'video_id' ] ) ? $r[ 'video_id' ] : null,
-            'language' => isset( $r[ 'language_code' ] ) ? $r[ 'language_code' ] : null,
-            'type' => isset( $r[ 'type' ] ) ? $r[ 'type' ] : null,
-            'assignee' => isset( $r[ 'assignee' ] ) ? $r[ 'assignee' ] : null,
-            'priority' => isset( $r[ 'priority' ] ) ? $r[ 'priority' ] : null,
-            'completed' => isset( $r[ 'completed' ] ) ? $r[ 'completed' ] : null,
-            'approved' => isset( $r[ 'approved' ] ) ? $r[ 'approved' ] : null,
-            'version_no' => isset( $r[ 'version_no' ] ) ? $r[ 'version_no' ] : null
-        );
-        return $this->createResource( $res, $query );
+            'video_id' => isset($r['video_id']) ? $r['video_id'] : null,
+            'language' => isset($r['language_code']) ? $r['language_code'] : null,
+            'type' => isset($r['type']) ? $r['type'] : null,
+            'assignee' => isset($r['assignee']) ? $r['assignee'] : null,
+            'priority' => isset($r['priority']) ? $r['priority'] : null,
+            'completed' => isset($r['completed']) ? $r['completed'] : null,
+            'approved' => isset($r['approved']) ? $r['approved'] : null,
+            'version_no' => isset($r['version_no']) ? $r['version_no'] : null
+       );
+        return $this->createResource($res, $query);
     }
 
     /**
@@ -612,14 +640,14 @@ class API {
      *
      * @since 0.1.0
      */
-    function deleteTask( $r ) {
+    function deleteTask($r) {
         $res = array(
             'resource' => 'task',
             'content_type' => 'json',
-            'team' => $r[ 'team' ],
-            'task_id' => $r[ 'task_id' ]
-        );
-        return $this->deleteResource( $res );
+            'team' => $r['team'],
+            'task_id' => $r['task_id']
+       );
+        return $this->deleteResource($res);
     }
 
     // SUBTITLES RESOURCE
@@ -638,28 +666,28 @@ class API {
      *
      * @since 0.1.0
      */
-    function getSubtitle( $r, &$lang_info = null ) {
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
-        if ( !isset( $r[ 'version' ] ) ) {
-            if ( $lang_info === null ) {
-                $lang_info = $this->getVideoLanguage( array(
-                    'video_id' => $r[ 'video_id' ],
-                    'language_code' => $r[ 'language_code' ]
-                ) );
+    function getSubtitle($r, &$lang_info = null) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        if (!isset($r['version'])) {
+            if ($lang_info === null) {
+                $lang_info = $this->getVideoLanguage(array(
+                    'video_id' => $r['video_id'],
+                    'language_code' => $r['language_code']
+               ));
             }
-            $r[ 'version' ] = $this->getLastVersion( $lang_info );
+            $r['version'] = $this->getLastVersion($lang_info);
         }
-        if ( $r[ 'version' ] === null ) { return null; }
+        if ($r['version'] === null) { return null; }
         $res = array(
             'resource' => 'subtitles',
-            'video_id' => $r[ 'video_id' ],
-            'language' => $r[ 'language_code' ],
-        );
+            'video_id' => $r['video_id'],
+            'language' => $r['language_code'],
+       );
         $query = array(
-            'format' => isset( $r[ 'format' ] ) ? $r[ 'format' ] : 0,
-            'version' => isset( $r[ 'version' ] ) ? $r[ 'version' ] : 0
-        );
-        return $this->getResource( $res, $query );
+            'format' => isset($r['format']) ? $r['format'] : 0,
+            'version' => isset($r['version']) ? $r['version'] : 0
+       );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -675,36 +703,36 @@ class API {
      *
      * @since 0.1.0
      */
-    function uploadSubtitle( $r, &$lang_info = null ) {
+    function uploadSubtitle($r, &$lang_info = null) {
         // Create the language if it doesn't exist
-        if ( !$this->isValidVideoID( $r[ 'video_id' ] ) ) { return null; }
-        if ( !$lang_info && !$lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) ) ) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        if (!$lang_info && !$lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code']))) {
             $res = array(
                 'resource' => 'languages',
                 'content_type' => 'json',
-                'video_id' => $r[ 'video_id' ]
-            );
+                'video_id' => $r['video_id']
+           );
             $query = array(
-                'language_code' => $r[ 'language_code' ]
-            );
-            $this->createResource( $res, $query );
-            $lang_info = $this->getVideoLanguage( array( 'video_id' => $r[ 'video_id' ], 'language_code' => $r[ 'language_code' ] ) );
+                'language_code' => $r['language_code']
+           );
+            $this->createResource($res, $query);
+            $lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code']));
         }
         $res = array(
             'resource' => 'subtitles',
             'content_type' => 'json',
-            'video_id' => $r[ 'video_id' ],
-            'language' => $r[ 'language_code' ],
-        );
+            'video_id' => $r['video_id'],
+            'language' => $r['language_code'],
+       );
         $query = array();
         $data = array(
-            'subtitles' => isset( $r[ 'subtitles' ] ) ? $r[ 'subtitles' ] : null,
-            'sub_format' => isset( $r[ 'sub_format' ] ) ? $r[ 'sub_format' ] : null,
-            'title' => isset( $r[ 'title' ] ) ? $r[ 'title' ] : $lang_info->title,
-            'description' => isset( $r[ 'description' ] ) ? $r[ 'description' ] : $lang_info->description,
-            'is_complete' => isset( $r[ 'complete' ] ) ? $r[ 'complete' ] : null
-        );
-        return $this->setResource( $res, $query, $data );
+            'subtitles' => isset($r['subtitles']) ? $r['subtitles'] : null,
+            'sub_format' => isset($r['sub_format']) ? $r['sub_format'] : null,
+            'title' => isset($r['title']) ? $r['title'] : $lang_info->title,
+            'description' => isset($r['description']) ? $r['description'] : $lang_info->description,
+            'is_complete' => isset($r['complete']) ? $r['complete'] : null
+       );
+        return $this->setResource($res, $query, $data);
     }
 
     // TEAM MEMBER RESOURCE
@@ -715,17 +743,17 @@ class API {
      *
      * @since 0.2.0
      */
-    function getMembers( $r ) {
+    function getMembers($r) {
         $res = array(
             'resource' => 'members',
             'content_type' => 'json',
-            'team' => $r[ 'team' ]
-        );
+            'team' => $r['team']
+       );
         $query = array(
-            'limit' => isset( $r[ 'limit' ] ) ? $r[ 'limit' ] : $this->limit,
-            'offset' => isset( $r[ 'offset' ] ) ? $r[ 'offset' ] : 0
-        );
-        return $this->getResource( $res, $query );
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+       );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -740,19 +768,19 @@ class API {
      *
      * @since 0.2.0
      */
-    function addPartnerMember( $r ) {
+    function addPartnerMember($r) {
         $res = array(
             'resource' => 'members',
             'content_type' => 'json',
-            'team' => $r[ 'team' ]
-        );
+            'team' => $r['team']
+       );
         $query = array(
-        );
+       );
         $data = array(
-            'username' => $r[ 'username' ],
-            'role' => $r[ 'role' ]
-        );
-        return $this->createResource( $res, $query, $data );
+            'username' => $r['username'],
+            'role' => $r['role']
+       );
+        return $this->createResource($res, $query, $data);
     }
 
     /**
@@ -763,18 +791,18 @@ class API {
      *
      * @since 0.2.0
      */
-    function addMember( $r ) {
+    function addMember($r) {
         $res = array(
             'resource' => 'safe-members',
             'content_type' => 'json',
-            'team' => $r[ 'team' ]
-        );
+            'team' => $r['team']
+       );
         $query = array();
         $data = array(
-            'username' => $r[ 'username' ],
-            'role' => $r[ 'role' ]
-        );
-        return $this->createResource( $res, $query, $data );
+            'username' => $r['username'],
+            'role' => $r['role']
+       );
+        return $this->createResource($res, $query, $data);
     }
 
     /**
@@ -782,14 +810,14 @@ class API {
      *
      * @since 0.2.0
      */
-    function deleteMember( $r ) {
+    function deleteMember($r) {
         $res = array(
             'resource' => 'member',
             'content_type' => 'json',
-            'team' => $r[ 'team' ],
-            'username' => $r[ 'username' ]
-        );
-        return $this->deleteResource( $res );
+            'team' => $r['team'],
+            'username' => $r['username']
+       );
+        return $this->deleteResource($res);
     }
 
     // USER RESOURCE
@@ -800,13 +828,13 @@ class API {
      *
      * @since 0.2.0
     */
-    function getUser( $r ) {
+    function getUser($r) {
         $res = array(
             'resource' => 'users',
             'content_type' => 'json',
-            'username' => $r[ 'username' ]
-        );
-        return $this->getResource( $res );
+            'username' => $r['username']
+       );
+        return $this->getResource($res);
     }
 
     /**
@@ -814,17 +842,17 @@ class API {
      *
      * @since 0.3.0
      */
-    function getUsers( $users ) {
-        if ( !is_array( $users ) || empty( $users ) ) { return null; }
+    function getUsers($users) {
+        if (!is_array($users) || empty($users)) { return null; }
         $result = array();
-        for ( $i = 0; $i < count( $users ); $i++ ) {
+        for ($i = 0; $i < count($users); $i++) {
             $res = array(
                 'resource' => 'users',
                 'content_type' => 'json',
                 'username' => $users[$i]
-            );
-            $user = $this->getResource( $res );
-            if ( !is_object( $user ) ) {
+           );
+            $user = $this->getResource($res);
+            if (!is_object($user)) {
                 // TODO: Handle/Log error.
                 continue;
             }
@@ -833,7 +861,7 @@ class API {
         return $result;
     }
 
-    // VALIDATORS
+    // VALIDATIONTa
 
     /**
      * Validate API keys
@@ -845,11 +873,11 @@ class API {
      * @todo Validate URL
      * @since 0.1.0
      */
-    function validateAccount( $host, $user, $apikey ) {
-        if ( strlen( $apikey ) !== 40 ) {
-            throw new \LengthException( 'The API key is not 40 characters long' );
-        } elseif ( preg_match( '/^[0-9a-f]*$/', $apikey ) !== 1 ) {
-            throw new \InvalidArgumentException( 'The API key should contain lowercase hexadecimal characters only' );
+    function validateAccount($host, $user, $apikey) {
+        if (strlen($apikey) !== 40) {
+            throw new \LengthException('The API key is not 40 characters long');
+        } elseif (preg_match('/^[0-9a-f]*$/', $apikey) !== 1) {
+            throw new \InvalidArgumentException('The API key should contain lowercase hexadecimal characters only');
         }
         return true;
     }
@@ -861,8 +889,8 @@ class API {
      *
      * @since 0.2.0
      */
-    function isValidUser( $r, $use_cache = null ) {
-        return $this->getUser( array( 'username' => $r ) );
+    function isValidUser($r, $use_cache = null) {
+        return $this->getUser(array('username' => $r));
     }
 
 
@@ -871,10 +899,10 @@ class API {
      *
      * @since 0.1.0
      */
-    function isValidObject( $object, $valid_methods ) {
-        if ( !is_object( $object ) || !is_array( $valid_methods) ) { return null; }
-        $obj_methods = get_class_methods( $object );
-        if ( count( array_intersect( $valid_methods, $obj_methods ) ) === count( $valid_methods ) ) {
+    function isValidObject($object, $valid_methods) {
+        if (!is_object($object) || !is_array($valid_methods)) { return null; }
+        $obj_methods = get_class_methods($object);
+        if (count(array_intersect($valid_methods, $obj_methods)) === count($valid_methods)) {
             return true;
         }
         return false;
@@ -885,10 +913,10 @@ class API {
      *
      * @since 0.1.0
      */
-    function isValidVideoID( $video_id ) {
-        if ( strlen( $video_id ) !== 12 ) {
+    function isValidVideoID($video_id) {
+        if (strlen($video_id) !== 12) {
             return false;
-        } elseif ( preg_match( '/^[A-Za-z0-9]*$/', $video_id ) !== 1 ) {
+        } elseif (preg_match('/^[A-Za-z0-9]*$/', $video_id) !== 1) {
             return false;
         }
         return true;
@@ -899,10 +927,20 @@ class API {
      *
      * @since 0.2.0
      */
-    function isValidRole( $role ) {
-        if ( !isset( $role ) || !is_string( $role ) ) { return false; }
-        return in_array( $role, array( 'admin', 'manager', 'owner', 'contributor' ) );
+    function isValidRole($role) {
+        if (!isset($role) || !is_string($role)) { return false; }
+        return in_array($role, array('admin', 'manager', 'owner', 'contributor'));
     }
+
+    /**
+     * Check if a task name is valid
+     */
+    function isValidTaskName($taskName) {
+        if (!isset($taskName)) { return false; }
+        return in_array($taskName, array('Subtitle', 'Translate', 'Review', 'Approve'));
+    }
+
+
 
     /**
      * Check if a string is a valid language codec
@@ -910,9 +948,32 @@ class API {
      * @since 0.3.0
      * @TODO Optionally fetch a list of language codes
      */
-    function isValidLanguageCode( $languageCode ) {
-	    $amaraLanguages = array( "aa", "ab", "ae", "af", "aka", "amh", "an", "arc", "ar", "arq", "ase", "as", "ast", "av", "ay", "az", "bam", "ba", "be", "ber", "bg", "bh", "bi", "bn", "bnt", "bo", "br", "bs", "bug", "cak", "ca", "ceb", "ce", "ch", "cho", "cku", "co", "cr", "cs", "ctd", "ctu", "cu", "cu", "cv", "cy", "da", "de", "dv", "dz", "ee", "efi", "el", "en-gb", "en", "eo", "es-ar", "es-mx", "es", "es-ni", "et", "eu", "fa", "ff", "fil", "fi", "fj", "fo", "fr-ca", "fr", "fy", "fy-nl", "ga", "gd", "gl", "gn", "gu", "gv", "hai", "hau", "haw", "haz", "hus", "hb", "hch", "he", "hi", "ho", "hr", "ht", "hu", "hup", "hy", "hz", "ia", "ibo", "id", "ie", "ig", "ii", "ik", "ilo", "inh", "io", "iro", "is", "it", "iu", "ja", "jv", "ka", "kar", "kau", "kg", "kik", "ki", "kin", "kj", "kk", "kl", "km", "kn", "ko", "kon", "kr", "ksh", "ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "lg", "li", "lin", "lkt", "lld", "ln", "lo", "lt", "ltg", "lu", "lua", "luo", "luy", "lv", "mad", "meta-audio", "meta-geo", "meta-tw", "meta-wiki", "mg", "mh", "mi", "mk", "ml", "mlg", "mo", "moh", "mn", "mni", "mnk", "mos", "mr", "ms", "mt", "mus", "my", "na", "nan", "nb", "nci", "nd", "ne", "ng", "nl", "nn", "no", "nr", "nso", "nv", "ny", "oc", "oji", "om", "or", "orm", "os", "pa", "pam", "pan", "pap", "pi", "pl", "pnb", "prs", "ps", "pt-br", "pt", "que", "qvi", "raj", "rm", "rn", "ro", "ru", "run", "rup", "ry", "rw", "sa", "sc", "sco", "sd", "se", "sg", "sgn", "sh", "si", "sk", "skx", "sl", "sm", "sna", "sot", "sa", "sq", "sr-latn", "sr", "srp", "ss", "st", "su", "sv", "swa", "szl", "ta", "tar", "te", "tet", "tg", "th", "tir", "tk", "tl", "tlh", "tn", "to", "toj", "tr", "ts", "tsn", "tsz", "tt", "tw", "ty", "tzh", "tzo", "ug", "uk", "umb", "ur", "uz", "ve", "vi", "vls", "vo", "wa", "wbl", "wol", "xho", "yaq", "yi", "yor", "yua", "za", "zam", "zh-cn", "zh-hk", "zh", "zh-sg", "zh-tw", "zul" );
-	    return in_array( $languageCode, $amaraLanguages );
+    function isValidLanguageCode($languageCode) {
+	    $amaraLanguages = array("aa", "ab", "ae", "af", "aka", "amh", "an", "arc", "ar", "arq", "ase", "as", "ast", "av", "ay", "az", "bam", "ba", "be", "ber", "bg", "bh", "bi", "bn", "bnt", "bo", "br", "bs", "bug", "cak", "ca", "ceb", "ce", "ch", "cho", "cku", "co", "cr", "cs", "ctd", "ctu", "cu", "cu", "cv", "cy", "da", "de", "dv", "dz", "ee", "efi", "el", "en-gb", "en", "eo", "es-ar", "es-mx", "es", "es-ni", "et", "eu", "fa", "ff", "fil", "fi", "fj", "fo", "fr-ca", "fr", "fy", "fy-nl", "ga", "gd", "gl", "gn", "gu", "gv", "hai", "hau", "haw", "haz", "hus", "hb", "hch", "he", "hi", "ho", "hr", "ht", "hu", "hup", "hy", "hz", "ia", "ibo", "id", "ie", "ig", "ii", "ik", "ilo", "inh", "io", "iro", "is", "it", "iu", "ja", "jv", "ka", "kar", "kau", "kg", "kik", "ki", "kin", "kj", "kk", "kl", "km", "kn", "ko", "kon", "kr", "ksh", "ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "lg", "li", "lin", "lkt", "lld", "ln", "lo", "lt", "ltg", "lu", "lua", "luo", "luy", "lv", "mad", "meta-audio", "meta-geo", "meta-tw", "meta-wiki", "mg", "mh", "mi", "mk", "ml", "mlg", "mo", "moh", "mn", "mni", "mnk", "mos", "mr", "ms", "mt", "mus", "my", "na", "nan", "nb", "nci", "nd", "ne", "ng", "nl", "nn", "no", "nr", "nso", "nv", "ny", "oc", "oji", "om", "or", "orm", "os", "pa", "pam", "pan", "pap", "pi", "pl", "pnb", "prs", "ps", "pt-br", "pt", "que", "qvi", "raj", "rm", "rn", "ro", "ru", "run", "rup", "ry", "rw", "sa", "sc", "sco", "sd", "se", "sg", "sgn", "sh", "si", "sk", "skx", "sl", "sm", "sna", "sot", "sa", "sq", "sr-latn", "sr", "srp", "ss", "st", "su", "sv", "swa", "szl", "ta", "tar", "te", "tet", "tg", "th", "tir", "tk", "tl", "tlh", "tn", "to", "toj", "tr", "ts", "tsn", "tsz", "tt", "tw", "ty", "tzh", "tzo", "ug", "uk", "umb", "ur", "uz", "ve", "vi", "vls", "vo", "wa", "wbl", "wol", "xho", "yaq", "yi", "yor", "yua", "za", "zam", "zh-cn", "zh-hk", "zh", "zh-sg", "zh-tw", "zul");
+	    return in_array($languageCode, $amaraLanguages);
+    }
+
+    /**
+     * Exception messages
+     *
+     * @since 0.4.1
+     */
+    protected function throwException($type, $caller, $expected, $argument) {
+        switch ($type) {
+            case "InvalidArgumentType":
+                $message = "Argument passed to {$caller} must be of the type {$expected}, " . gettype($argument) . ' given.';
+                throw new \InvalidArgumentException($message);
+                break;
+            case "InvalidAPIAccount":
+                $message = "Invalid API account settings passed to {$caller}, Expected: {$expected}, Got: {$got}";
+                throw new \InvalidArgumentException($message);
+                break;
+            default:
+                $message = "Unknown exception. Caller: {$caller}, Expected: {$expected}, Got: {$got}";
+                throw new \UnknownException($message);
+                break;
+        }
+
     }
 
 }
@@ -928,13 +989,13 @@ class API {
  * @used-by AmaraAPI
  */
 class DummyLogger {
-    function emergency( $message, array $context = array() ) {}
-    function alert( $message, array $context = array() ) {}
-    function critical( $message, array $context = array() ) {}
-    function error( $message, array $context = array() ) {}
-    function warning( $message, array $context = array() ) {}
-    function notice( $message, array $context = array() ) {}
-    function info( $message, array $context = array() ) {}
-    function debug( $message, array $context = array() ) {}
-    function log( $level, $message, array $context = array() ) {}
+    function emergency($message, array $context = array()) {}
+    function alert($message, array $context = array()) {}
+    function critical($message, array $context = array()) {}
+    function error($message, array $context = array()) {}
+    function warning($message, array $context = array()) {}
+    function notice($message, array $context = array()) {}
+    function info($message, array $context = array()) {}
+    function debug($message, array $context = array()) {}
+    function log($level, $message, array $context = array()) {}
 }
