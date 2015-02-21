@@ -640,7 +640,7 @@ class API {
      *
      * @since 0.1.0
      */
-    function deleteTask($r) {
+    function deleteTask(array $r) {
         $res = array(
             'resource' => 'task',
             'content_type' => 'json',
@@ -666,7 +666,7 @@ class API {
      *
      * @since 0.1.0
      */
-    function getSubtitle($r, &$lang_info = null) {
+    function getSubtitle(array $r, &$lang_info = null) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
         if (!isset($r['version'])) {
             if ($lang_info === null) {
@@ -703,7 +703,7 @@ class API {
      *
      * @since 0.1.0
      */
-    function uploadSubtitle($r, &$lang_info = null) {
+    function uploadSubtitle(array $r, &$lang_info = null) {
         // Create the language if it doesn't exist
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
         if (!$lang_info && !$lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code']))) {
@@ -743,7 +743,7 @@ class API {
      *
      * @since 0.2.0
      */
-    function getMembers($r) {
+    function getMembers(array $r) {
         $res = array(
             'resource' => 'members',
             'content_type' => 'json',
@@ -768,7 +768,7 @@ class API {
      *
      * @since 0.2.0
      */
-    function addPartnerMember($r) {
+    function addPartnerMember(array $r) {
         $res = array(
             'resource' => 'members',
             'content_type' => 'json',
@@ -791,7 +791,7 @@ class API {
      *
      * @since 0.2.0
      */
-    function addMember($r) {
+    function addMember(array $r) {
         $res = array(
             'resource' => 'safe-members',
             'content_type' => 'json',
@@ -810,7 +810,7 @@ class API {
      *
      * @since 0.2.0
      */
-    function deleteMember($r) {
+    function deleteMember(array $r) {
         $res = array(
             'resource' => 'member',
             'content_type' => 'json',
@@ -828,7 +828,7 @@ class API {
      *
      * @since 0.2.0
     */
-    function getUser($r) {
+    function getUser(array $r) {
         $res = array(
             'resource' => 'users',
             'content_type' => 'json',
@@ -842,8 +842,8 @@ class API {
      *
      * @since 0.3.0
      */
-    function getUsers($users) {
-        if (!is_array($users) || empty($users)) { return null; }
+    function getUsers(array $users) {
+        if (empty($users)) { return null; }
         $result = array();
         for ($i = 0; $i < count($users); $i++) {
             $res = array(
@@ -861,7 +861,7 @@ class API {
         return $result;
     }
 
-    // VALIDATIONTa
+    // VALIDATION
 
     /**
      * Validate API keys
@@ -899,8 +899,7 @@ class API {
      *
      * @since 0.1.0
      */
-    function isValidObject($object, $valid_methods) {
-        if (!is_object($object) || !is_array($valid_methods)) { return null; }
+    function isValidObject(object $object, array $valid_methods) {
         $obj_methods = get_class_methods($object);
         if (count(array_intersect($valid_methods, $obj_methods)) === count($valid_methods)) {
             return true;
@@ -936,7 +935,7 @@ class API {
      * Check if a task name is valid
      */
     function isValidTaskName($taskName) {
-        if (!isset($taskName)) { return false; }
+        if (!isset($taskName) || !is_string($taskName)) { return false; }
         return in_array($taskName, array('Subtitle', 'Translate', 'Review', 'Approve'));
     }
 
