@@ -272,6 +272,10 @@ class API {
             case 'GET':
                 break;
             case 'POST':
+        		curl_setopt( $cr, CURLOPT_POST, 1 ); // Needed when creating a new language
+                //curl_setopt($cr, CURLOPT_CUSTOMREQUEST, $mode);
+                curl_setopt($cr, CURLOPT_POSTFIELDS, $data);
+                break;
             case 'PUT':
                 curl_setopt($cr, CURLOPT_CUSTOMREQUEST, $mode);
                 curl_setopt($cr, CURLOPT_POSTFIELDS, $data);
@@ -327,7 +331,6 @@ class API {
     protected function useResource($method, array $r, $q = null, $data = null) {
         $result = array();
         $header = $this->getHeader(isset($r['content_type']) ? $r['content_type'] : null);
-        if (!isset($q['offset'])) { $q['offset'] = 0; }
         if (isset($data) && $r['content_type'] === 'json') { $data = json_encode($data); }
         do {
             $url = $this->getResourceUrl($r, $q);
@@ -339,6 +342,7 @@ class API {
             // We have to loop -- merge and offset
             $result = array_merge($result, $result_chunk->objects);
             if ($result_chunk->meta->next === null) { break; }
+            if (!isset($q['offset'])) { $q['offset'] = 0; }
             if (isset($q['limit'])) { $q['offset'] += $this->limit; } // TODO: check this logic
         } while($result_chunk->meta->next + $q['offset'] < $result_chunk->meta->total_count);
         return $result;
@@ -706,16 +710,18 @@ class API {
     function uploadSubtitle(array $r, &$lang_info = null) {
         // Create the language if it doesn't exist
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
-        if (!$lang_info && !$lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code']))) {
+        if (!$lang_info) { $lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code'])); }
+        if (!is_object($lang_info)) {
             $res = array(
                 'resource' => 'languages',
                 'content_type' => 'json',
                 'video_id' => $r['video_id']
-           );
-            $query = array(
+            );
+            $query = array();
+            $data = array(
                 'language_code' => $r['language_code']
-           );
-            $this->createResource($res, $query);
+            );
+            $this->createResource($res, $query, $data);
             $lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code']));
         }
         $res = array(
@@ -723,7 +729,7 @@ class API {
             'content_type' => 'json',
             'video_id' => $r['video_id'],
             'language' => $r['language_code'],
-       );
+        );
         $query = array();
         $data = array(
             'subtitles' => isset($r['subtitles']) ? $r['subtitles'] : null,
@@ -731,7 +737,7 @@ class API {
             'title' => isset($r['title']) ? $r['title'] : $lang_info->title,
             'description' => isset($r['description']) ? $r['description'] : $lang_info->description,
             'is_complete' => isset($r['complete']) ? $r['complete'] : null
-       );
+        );
         return $this->setResource($res, $query, $data);
     }
 
