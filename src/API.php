@@ -17,7 +17,7 @@ namespace AmaraPHPAccess;
  * @author Fran Ontanaya
  * @copyright 2014 Fran Ontanaya
  * @license GPLv3
- * @version 0.4.0
+ * @version 0.4.2
  * @uses DummyLogger
  *
  * @todo Caching
@@ -27,7 +27,7 @@ namespace AmaraPHPAccess;
  * @todo Add DbC-style asserts
  */
 class API {
-    const VERSION = '0.4.1';
+    const VERSION = '0.4.2';
 
     /**
      * Credentials
@@ -512,6 +512,29 @@ class API {
        );
         return $this->setResource($res, $query);
     }
+
+    /**
+     * Change the main video's title
+     *
+     * http://amara.readthedocs.org/en/latest/api.html#put--api2-partners-videos-[video-id]-
+     * Currently broken
+     *
+     * @since 0.4.2
+     */
+    function renameVideo(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        $res = array(
+            'resource' => 'video',
+            'content_type' => 'json',
+            'video_id' => $r['video_id']
+       );
+        $data = array(
+            'title' => $r['title'],
+            'description' => $r['description']
+       );
+        return $this->setResource($res, null, $data);
+    }
+
 
     // ACTIVITY RESOURCE
     // http://amara.readthedocs.org/en/latest/api.html#activity-resource
