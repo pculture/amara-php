@@ -16,7 +16,7 @@ Provides an object to perform some of the most common interactions with Amara's 
 
 ## Example usage
 ```
-requireonce 'API.php';
+require_once 'API.php';
 $API = new AmaraPHP\API(
         'https://www.amara.org/api/',
         'username',
