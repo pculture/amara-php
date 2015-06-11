@@ -1,5 +1,5 @@
 <?php
-namespace AmaraPHPAccess;
+namespace AmaraPHP;
 
 /**
  * Amara API component
@@ -15,7 +15,7 @@ namespace AmaraPHPAccess;
  * audit it before using it.
  *
  * @author Fran Ontanaya
- * @copyright 2014 Fran Ontanaya
+ * @copyright 2015 Fran Ontanaya
  * @license GPLv3
  * @version 0.4.2
  * @uses DummyLogger

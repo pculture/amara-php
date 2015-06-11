@@ -1,6 +1,6 @@
 {
-    "name": "pculture/amara-php-access",
-    "description": "PHP Data Access Object for interacting with Amara's API",
+    "name": "pculture/amara-php",
+    "description": "PHP snippets and scripts for interacting with Amara",
     "license": "GPLv3",
     "keywords": ["API"],
     "authors": [
@@ -13,7 +13,7 @@
     "require-dev": {},
     "autoload": {
         "psr-4": {
-            "AmaraPHPAccess\\": "src/"
+            "AmaraPHP\\": "src/"
         }
     }
 }
