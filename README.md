@@ -3,6 +3,13 @@ amara-php
 
 PHP snippets and scripts for interacting with Amara
 
+These are unsupported samples for your own implementations.
+
+All code except SrtParser is licensed as GPL 3.0
+https://www.gnu.org/licenses/gpl-3.0.en.html
+
+SrtParser is licensed as LGPL 2+ by Julien 'delphiki' Villetorte
+
 # API
 
 Provides an object to perform some of the most common interactions with Amara's API
