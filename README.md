@@ -17,7 +17,7 @@ Provides an object to perform some of the most common interactions with Amara's 
 ## Example usage
 ```
 require_once 'API.php';
-$API = new AmaraPHP\API(
+$API = new AmaraPHP\API\API(
         'https://www.amara.org/api/',
         'username',
         'apikey'
@@ -32,6 +32,36 @@ $captions = $API->getSubtitle(array(
         'language_code' => $language
     ));
 ```
+
+# Team Stats
+
+Collects data about a team and the languages.
+
+## Example usage
+
+Make sure there's a tmp folder where the script is placed and that teamstats.php is set as executable (chmod +x teamstats.php)
+
+Run from the Linux commandline:
+
+```
+./teamstats.php -t teamslug -p projectslug -stats vlc -apikey 123abcetc -u username
+```
+
+The stats flag indicates what stats to collect. 
+
+* v for video info
+* l for language info, including state (complete/incomplete)
+* r for runtime stats
+* p for proxy stats. This may try to fetch the duration using ffmpeg if possible and it's missing from the API.
+* c for completion stats. This will list how many videos in each language are completed
+
+You can specify multiple teamsluts and projectslugs separating them with commas (no spaces). Project is optional.
+
+After the script finishes running a number of CSV files will be created in a timestamped folder inside tmp.
+
+## Known issues
+
+Currently it doesn't use the API component.
 
 # ShotLog
 
