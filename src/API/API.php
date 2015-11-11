@@ -337,7 +337,7 @@ class API {
             $response = $this->curl($method, $header, $url, $data);
             $result_chunk = json_decode($response);
             if (json_last_error() != JSON_ERROR_NONE) { return $response; } // It's not JSON, just deliver as-is.
-            if ($method !== 'GET' || !isset($result_chunk->objects)) { return $result_chunk; } // We can't loop this, deliver JSON.
+            if ($method !== 'GET' || !isset($result_chunk->objects)) { return $result_chunk; } // We can't loop this, deliver JSON or error messages.
             if (!is_array($result_chunk->objects)) { throw new \UnexpectedValueException('Traversable resource\'s \'objects\' property is not an array'); }
             // We have to loop -- merge and offset
             $result = array_merge($result, $result_chunk->objects);
@@ -761,7 +761,7 @@ class API {
             'description' => isset($r['description']) ? $r['description'] : $lang_info->description,
             'is_complete' => isset($r['complete']) ? $r['complete'] : null
         );
-        return $this->setResource($res, $query, $data);
+        return $this->createResource($res, $query, $data);
     }
 
     // TEAM MEMBER RESOURCE
