@@ -17,7 +17,7 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2015 Fran Ontanaya
  * @license GPLv3
- * @version 0.4.2
+ * @version 0.6.0
  * @uses DummyLogger
  *
  * @todo Caching
@@ -27,7 +27,7 @@ namespace AmaraPHP;
  * @todo Add DbC-style asserts
  */
 class API {
-    const VERSION = '0.4.2';
+    const VERSION = '0.6.0';
 
     /**
      * Credentials
@@ -245,6 +245,9 @@ class API {
             case 'users':
                 $url = "{$this->host}users/{$r['username']}/";
                 break;
+            case 'applications':
+                $url = "{$this->host}teams/{$r['team']}/applications/";
+                break;
             default:
                 return null;
         }
@@ -339,11 +342,11 @@ class API {
             if (json_last_error() != JSON_ERROR_NONE) { return $response; } // It's not JSON, just deliver as-is.
             if ($method !== 'GET' || !isset($result_chunk->objects)) { return $result_chunk; } // We can't loop this, deliver JSON or error messages.
             if (!is_array($result_chunk->objects)) { throw new \UnexpectedValueException('Traversable resource\'s \'objects\' property is not an array'); }
-            // We have to loop -- merge and offset
+            // Found "next" for pagination, we have to loop, offset and merge
             $result = array_merge($result, $result_chunk->objects);
             if ($result_chunk->meta->next === null) { break; }
             if (!isset($q['offset'])) { $q['offset'] = 0; }
-            if (isset($q['limit'])) { $q['offset'] += $this->limit; } // TODO: check this logic
+            $q['offset'] += (isset($q['limit']) ? $q['limit'] : $this->limit);
         } while($result_chunk->meta->next + $q['offset'] < $result_chunk->meta->total_count);
         return $result;
     }
@@ -448,7 +451,7 @@ class API {
      * if you'd rather not wait for this method to finish.
      *
      * @since 0.1.0
-    */
+     */
     function getVideos(array $r) {
         $res = array(
             'resource' => 'videos',
@@ -491,6 +494,38 @@ class API {
         }
         return $this->getResource($res, $query);
     }
+
+    /**
+     * Adds a new video with a given URL
+     *
+     * Requires to specify a team since this component is mostly used
+     * for team videos that shouldn't get posted publicly. 
+     *
+     * @since 0.5.0
+     */
+    function createVideo(array $r) {
+        $query = array();
+        $data = array();
+        if (isset($r['video_url'], $r['primary_language'], $r['team'])) {
+            $res = array(
+                    'resource' => 'videos',
+                    'content_type' => 'json'
+                );
+            $query = array(
+                );
+            $data = array(
+                    'team' => $r['team'],
+                    'project' => isset($r['project']) ? $r['project'] : null,
+                    'title' => isset($r['title']) ? $r['title'] : '',
+                    'description' => isset($r['description']) ? $r['description'] : '',
+                    'video_url' => $r['video_url'],
+                    'duration' => isset($r['duration']) ? $r['duration'] : null,
+                    'primary_audio_language_code' => $r['primary_language'],
+            );
+        }
+        return $this->createResource($res, $query, $data);
+    }
+    
 
     /**
      * Move a video into a different team/project
@@ -888,6 +923,32 @@ class API {
             $result[$i] = $user;
         }
         return $result;
+    }
+
+    // TEAM APPLICATIONS
+    // http://amara.readthedocs.io/en/old-api-docs/api.html#team-applications-resource
+
+    /**
+     * Get information about all applications in a team
+     *
+     * @since 0.6.0
+     */
+
+    function getApplications(array $r) {
+        $res = array(
+            'resource' => 'applications',
+            'content_type' => 'json',
+            'team' => $r['team'],
+        );
+        $query = array(
+            'status' => isset($r['status']) ? $r['status'] : null,
+            'before' => isset($r['before']) ? $r['before'] : null,
+            'after' => isset($r['after']) ? $r['after'] : null,
+            'user' => isset($r['user']) ? $r['user'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0,
+        );
+        return $this->getResource($res, $query);
     }
 
     // VALIDATION
