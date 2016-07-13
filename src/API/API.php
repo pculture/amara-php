@@ -542,7 +542,7 @@ class API {
             'video_id' => $r['video_id']
        );
         $query = array(
-            'team' => $r['team '],
+            'team' => $r['team'],
             'project' => $r['project']
        );
         return $this->setResource($res, $query);
