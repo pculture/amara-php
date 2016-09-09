@@ -15,19 +15,14 @@ namespace AmaraPHP;
  * audit it before using it.
  *
  * @author Fran Ontanaya
- * @copyright 2015 Fran Ontanaya
+ * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.6.0
+ * @version 0.7.0
  * @uses DummyLogger
  *
- * @todo Caching
- * @todo Add relevant logging events
- * @todo Validate everything.
- * @todo Support HTTPS
- * @todo Add DbC-style asserts
  */
 class API {
-    const VERSION = '0.6.0';
+    const VERSION = '0.7.0';
 
     /**
      * Credentials
@@ -248,6 +243,12 @@ class API {
             case 'applications':
                 $url = "{$this->host}teams/{$r['team']}/applications/";
                 break;
+            case 'projects':
+                $url = "{$this->host}teams/{$r['team']}/projects/";
+                break;
+            case 'project':
+                $url = "{$this->host}teams/{$r['team']}/projects/{$r['project']}/";
+                break;
             default:
                 return null;
         }
@@ -368,7 +369,7 @@ class API {
     }
 
     // VIDEO LANGUAGE RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#video-language-resource
+    // https://amara.readthedocs.io/en/latest/api.html#video-language-resource
 
     /**
      * Listing video languages
@@ -439,7 +440,7 @@ class API {
     }
 
     // VIDEO RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#video-resource
+    // https://amara.readthedocs.io/en/latest/api.html#video-resource
 
     /**
      * Get information about all videos in a team/project
@@ -530,7 +531,7 @@ class API {
     /**
      * Move a video into a different team/project
      *
-     * http://amara.readthedocs.org/en/latest/api.html#moving-videos-between-teams-and-projects
+     * https://amara.readthedocs.io/en/latest/api.html#moving-videos-between-teams-and-projects
      *
      * @since 0.1.0
      */
@@ -540,18 +541,19 @@ class API {
             'resource' => 'video',
             'content_type' => 'json',
             'video_id' => $r['video_id']
-       );
-        $query = array(
+        );
+        $query = array();
+        $data = array(
             'team' => $r['team'],
             'project' => $r['project']
        );
-        return $this->setResource($res, $query);
+        return $this->setResource($res, $query, $data);
     }
 
     /**
      * Change the main video's title
      *
-     * http://amara.readthedocs.org/en/latest/api.html#put--api2-partners-videos-[video-id]-
+     * https://amara.readthedocs.io/en/latest/api.html#put--api2-partners-videos-[video-id]-
      * Currently broken
      *
      * @since 0.4.2
@@ -570,9 +572,66 @@ class API {
         return $this->setResource($res, null, $data);
     }
 
+    // PROJECTS RESOURCE
+    // https://amara.readthedocs.io/en/latest/api.html#projects-resource
+    /**
+     * Get all the projects in a team
+     *
+     * @param array $r
+     * @since 0.7.0
+     */
+    function getProjects(array $r = array()) {
+        $res = array(
+            'resource' => 'projects',
+            'team' => $r['team'],
+            'content_type' => 'json'
+        );
+        $query = array();
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * Get details on a project
+     *
+     * @param array $r
+     * @since 0.7.0
+     */
+    function getProject(array $r = array()) {
+        $res = array(
+            'resource' => 'projects',
+            'team' => $r['team'],
+            'project' => $r['project'],
+            'content_type' => 'json'
+        );
+        $query = array();
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * Create a new project
+     *
+     * @param array $r
+     * @since 0.7.0
+     */
+    function createProject(array $r = array()) {
+        $res = array(
+            'resource' => 'projects',
+            'team' => $r['team'],
+            'content_type' => 'json'
+        );
+        $query = array();
+        $data = array(
+            'name' => $r['name'],
+            'slug' => $r['slug'],
+            'description' => isset($r['description']) ?: null,
+            'guidelines' => isset($r['guidelines']) ?: null
+        );
+        return $this->createResource($res, $query, $data);
+    }
+
 
     // ACTIVITY RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#activity-resource
+    // https://amara.readthedocs.io/en/latest/api.html#activity-resource
 
     /**
      * Retrieve a set of activity data
@@ -580,7 +639,7 @@ class API {
      * Make sure you specify either $team or $video_id
      * otherwise you'll query public activity from the whole site, which is
      * a heavy request.
-     * See http://amara.readthedocs.org/en/latest/api.html#activity-resource
+     * See https://amara.readthedocs.io/en/latest/api.html#activity-resource
      *
      * @since 0.1.0
      */
@@ -617,7 +676,7 @@ class API {
     }
 
     // TASK RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#task-resource
+    // https://amara.readthedocs.io/en/latest/api.html#task-resource
 
     /**
      * Retrieve a set of task records
@@ -668,7 +727,6 @@ class API {
      * request.
      *
      * @since 0.1.0
-     * @todo Log notice on invalid lang_info
      */
     function createTask(array $r, &$lang_info = null) {
         if (!is_object($lang_info)) { $lang_info = null; }
@@ -678,7 +736,6 @@ class API {
             if ($lang_info === null) { $lang_info = $this->getVideoLanguage(array('video_id' => $r['video_id'], 'language_code' => $r['language_code'])); }
             $r['version_no'] = $this->getLastVersion($lang_info);
         }
-        // TODO: It shouldn't assign the task to me
         $res = array(
             'resource' => 'tasks',
             'content_type' => 'json',
@@ -713,7 +770,7 @@ class API {
     }
 
     // SUBTITLES RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#subtitles-resource
+    // https://amara.readthedocs.io/en/latest/api.html#subtitles-resource
 
     /**
      * Fetch the subtitle track
@@ -800,7 +857,7 @@ class API {
     }
 
     // TEAM MEMBER RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#team-member-resource
+    // https://amara.readthedocs.io/en/latest/api.html#team-member-resource
 
     /**
      * Get the list of members in a team
@@ -885,7 +942,7 @@ class API {
     }
 
     // USER RESOURCE
-    // http://amara.readthedocs.org/en/latest/api.html#user-resource
+    // https://amara.readthedocs.io/en/latest/api.html#user-resource
 
     /**
      * Get user detail
