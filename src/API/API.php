@@ -4,32 +4,20 @@ namespace AmaraPHP;
 /**
  * Amara API component
  *
- * This component provides an AmaraAPI object to perform common interactions
+ * This component provides an object to perform common interactions
  * with Amara.org's API.
- *
- * It's a refactoring of code originally intended for automating tasks
- * from the command line, so it's pretty much alpha code.
- *
- * A lot of resources aren't handled yet, no optimizations have been performed,
- * and updates will break things. It's provided "as is" -- you must fully
- * audit it before using it.
  *
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.7.0
- * @uses DummyLogger
+ * @version 0.8.0
  *
  */
 class API {
-    const VERSION = '0.7.0';
+    const VERSION = '0.8.0';
 
     /**
      * Credentials
-     *
-     * Each instance of the object is tied to a set of credentials.
-     * Recycling the object with different credentials is probably
-     * calling for trouble.
      *
      * @since 0.1.0
      */
@@ -40,11 +28,6 @@ class API {
     /**
      * External dependencies
      *
-     * These store supplied dependencies. Protected since they need validation
-     * e.g. to ensure they are PSR compliant.
-     *
-     * Not implemented currently.
-     *
      * @since 0.1.0
      */
     protected $logger;
@@ -53,21 +36,15 @@ class API {
     /**
      * Settings
      *
-     * Properties that may be changed on the fly.
-     *
      * Beware raising $limit (the number of records per request) too much,
      * requests that take longer than a minute time out e.g. on videos
      * with many languages.
      *
-     * $total_limit caps how many records you can retrieve from traversable
-     * resources. The default is already very high, but some resources like
-     * team activity can have tens of thousands of records. You may want
-     * to raise the total_limit temporarily for certain actions only,
-     * so you don't have some request accidentally get caught trying to fetch
-     * a huge batch of data. Or better, use the $offset argument when calling
-     * traversable getX methods and aggregate the responses. This may
-     * eventually be replacied with a Generator that yields the data
-     * as required.
+     * $total_limit caps how many records you can retrieve from paged
+     * resources. Some resources like team activity can have tens of thousands of records
+     * and things (e.g. connection hiccups) can go wrong trying to fetch them all at once.
+     * You may want to raise the total_limit explicitly for certain actions, or use
+     * the $offset argument when calling paged getX methods and aggregate the responses.
      *
      * @since 0.1.0
     */
@@ -75,27 +52,28 @@ class API {
     public $limit = 10;
     public $total_limit = 2000;
     public $verbose_curl = false;
-    public $assers_enabled = true;
 
     /**
      * Initialization
      *
-     * For Amara.org, $host should be:
-     * https://www.amara.org/api2/partners/
-     *
      * @since 0.1.0
-    */
-    function __construct($host, $user, $apikey) {
+     * @param $host
+     * @param $user
+     * @param $apikey
+     */
+    function __construct($host, $user, $apikey, $logger = null) {
         $this->setAccount($host, $user, $apikey);
-        $this->setLogger = new DummyLogger();
+        $this->setLogger($logger);
     }
 
     /**
      * Change accounts
      *
-     * The key would be expected to be different on a different host.
-     *
      * @since 0.1.0
+     * @param $host
+     * @param $user
+     * @param $apikey
+     * @throws \InvalidAPIAccount
      */
     function setAccount($host, $user, $apikey) {
         $this->validateAccount($host, $user, $apikey);
@@ -121,21 +99,21 @@ class API {
 
 
     /**
-     * Set a PSR-3 logger
-     *
-     * Rather than bloating the constructor with some optional dependencies, like
-     * a PSR-3 logger, we construct with a dummy and let the user change the logger
-     * later.
-     *
-     * User may expect the previous logger to not continue being used
-     * after changing it, so if this fails, we set it as null.
+     * Set a valid PSR-3 logger
      *
      * @since 0.1.0
+     * @param $logger
+     * @return bool
      */
     function setLogger($logger) {
+        if ($logger === null) { $this->logger = null; return false; }
         if (!$this->isValidObject($logger, array('emergency', 'alert', 'critical', 'error', 'warning', 'notice', 'info', 'debug', 'log'))) {
-            $this->logger = null;
-            return false;
+            $this->throwException(
+                'InvalidLogger',
+                __METHOD__,
+                'Provided logger lacks PSR-3 methods',
+                'PSR-3 logger'
+            );
         }
         $this->logger = $logger;
         return true;
@@ -143,19 +121,20 @@ class API {
 
 
     // cURL methods
-
+    
     /**
      * Generates headers needed by Amara's API
      *
-     * Most, but not all, requests and responses from Amara's API are JSON
-     *
      * @since 0.1.0
+     * @param null $ct
+     * @return array
+     * @throws \InvalidAPIAccount
      */
     function getHeader($ct = null) {
         assert($this->validateAccount($this->host, $this->user, $this->apikey));
         if (!is_string($ct) && !is_null($ct)) {
             $this->throwException(
-                'InvalidArgumentType',
+                'InvalidAPIAccount',
                 __METHOD__,
                 'string or null',
                 gettype($ct)
@@ -173,27 +152,15 @@ class API {
     }
 
     /**
-     * Generates the proper API URL from the given parameters
+     * Route to the right API URL to perform an action.
      *
-     * This method will take a hash table of parameters and values and craft
-     * the right API URL to call to perform an action. The 'resource' key
-     * indicates which API resource is the target. $q should be key -> value array
-     * matching the required query parameters.
-     *
-     * Note that Amara's API takes POSTed data as JSON. Some queries may
-     * work sending that data in query arguments, but some don't
-     * (e.g. POSTing a new user).
-     *
-     * In principle $q would only contain meta filters like limit or offset.
-     *
-     * Note that $r['resource'] doesn't match necessarily the name of
-     * the resource, e.g. activities -> activity
-     *
-     * @TODO Validate arguments
-     * @TODO Validate outputs
-     * @TODO include all resources
+     * 'resource' indicates which API resource is the target.
+     * $q should be an associative array matching the required query parameters.
      *
      * @since 0.1.0
+     * @param array $r
+     * @param array $q
+     * @return null|string
      */
     function getResourceUrl(array $r, $q = array()) {
         foreach($r as $key=>$value) {
@@ -231,7 +198,7 @@ class API {
             case 'members':
                 $url = "{$this->host}teams/{$r['team']}/members/";
                 break;
-            case 'safe-members':
+            case 'safe_members':
                 $url = "{$this->host}teams/{$r['team']}/safe-members/";
                 break;
             case 'member':
@@ -249,6 +216,18 @@ class API {
             case 'project':
                 $url = "{$this->host}teams/{$r['team']}/projects/{$r['project']}/";
                 break;
+            case 'subtitle_requests':
+                $url = "{$this->host}subtitle-requests/";
+                break;
+            case 'subtitle_request':
+                $url = "{$this->host}subtitle-requests/{$r['job_id']}/";
+                break;
+            case 'team_requests':
+                $url = "{$this->host}teams/{$r['team']}/subtitle-requests/";
+                break;
+            case 'team_requests_remote':
+                $url = "{$this->host}teams/{$r['team']}/subtitle-requests/remote/";
+                break;
             default:
                 return null;
         }
@@ -264,6 +243,11 @@ class API {
      * Perform all HTTP methods.
      *
      * @since 0.1.0
+     * @param $mode
+     * @param $header
+     * @param $url
+     * @param string $data
+     * @return mixed|null
      */
     protected function curl($mode, $header, $url, $data = '') {
         $cr = curl_init();
@@ -292,19 +276,18 @@ class API {
         }
         $result = $this->curlTry($cr);
         curl_close($cr);
-        // TODO: log non GET responses here.
         return $result;
     }
 
-   /**
-    * cURL retry loop
-    *
-    * Exhaust all retries for HTTP actions.
-    * This is the method you'd really want to mock for tests.
-    *
-    * @since 0.1.0
-    * @todo Ensure the way to check for error is correct
-    */
+    /**
+     * cURL retry loop
+     *
+     * Exhaust all retries for HTTP actions.
+     *
+     * @since 0.1.0
+     * @param $cr
+     * @return mixed|null
+     */
     protected function curlTry($cr) {
         $retries = 0;
         do {
@@ -317,20 +300,17 @@ class API {
     /**
      * Fetch all required data from a resource
      *
-     * Some Amara resources can be traversed specifying an offset and limit.
-     * useResource is meant to handle that, aggregating all the responses.
+     * Some Amara resources are paginated with an offset and limit.
+     * They return data as an array of objects in $response->objects.
      *
-     * All traversable objects (so far) return the data as an array of objects
-     * in $response->objects.
+     * If the response is not valid JSON, it's returned as-is (e.g. a subtitle track);
+     * if it's JSON, but doesn't have an objects array, it's decoded and returned immediately.
      *
-     * If the response is not valid JSON, it's returned as-is (e.g. a subtitle
-     * track); if it's JSON, but doesn't have an objects array, we won't loop to
-     * fetch more data.
-     *
-     * Although useResource could be called directly, there's a separate
-     * method for each HTTP method in case you would want to modify
-     * the behavior of certain HTTP methods later on, without having to
-     * duplicate the rest of useResource.
+     * @param $method
+     * @param array $r
+     * @param null $q
+     * @param null $data
+     * @return array|mixed
      */
     protected function useResource($method, array $r, $q = null, $data = null) {
         $result = array();
@@ -339,42 +319,85 @@ class API {
         do {
             $url = $this->getResourceUrl($r, $q);
             $response = $this->curl($method, $header, $url, $data);
-            $result_chunk = json_decode($response);
-            if (json_last_error() != JSON_ERROR_NONE) { return $response; } // It's not JSON, just deliver as-is.
-            if ($method !== 'GET' || !isset($result_chunk->objects)) { return $result_chunk; } // We can't loop this, deliver JSON or error messages.
-            if (!is_array($result_chunk->objects)) { throw new \UnexpectedValueException('Traversable resource\'s \'objects\' property is not an array'); }
-            // Found "next" for pagination, we have to loop, offset and merge
-            $result = array_merge($result, $result_chunk->objects);
-            if ($result_chunk->meta->next === null) { break; }
+            $resultChunk = json_decode($response);
+            if (json_last_error() != JSON_ERROR_NONE) {
+                // It's not JSON, just deliver as-is.
+                return $response;
+            }
+            if ($method !== 'GET' || !isset($resultChunk->objects)) {
+                // Nothing to loop, deliver JSON or error.
+                return $resultChunk;
+            }
+            if (!is_array($resultChunk->objects)) {
+                throw new \UnexpectedValueException('\'objects\' property is not an array');
+            }
+            $result = array_merge($result, $resultChunk->objects);
+            if ($resultChunk->meta->next === null) {
+                break;
+            }
             if (!isset($q['offset'])) { $q['offset'] = 0; }
             $q['offset'] += (isset($q['limit']) ? $q['limit'] : $this->limit);
-        } while($result_chunk->meta->next + $q['offset'] < $result_chunk->meta->total_count);
+        } while($resultChunk->meta->next + $q['offset'] < $resultChunk->meta->total_count);
         return $result;
     }
 
+    /**
+     * Call an API point that returns a resource
+     * 
+     * @param array $r
+     * @param null $q
+     * @param null $data
+     * @return array|mixed
+     */
     protected function getResource(array $r, $q = null, $data = null) {
         return $this->useResource('GET', $r, $q, $data);
     }
 
+    /**
+     * Call an API point that creates a resource
+     * 
+     * @param array $r
+     * @param null $q
+     * @param null $data
+     * @return array|mixed
+     */
     protected function createResource(array $r, $q = null, $data = null) {
         return $this->useResource('POST', $r, $q, $data);
     }
 
+    /**
+     * Call an API point that updates a resource     
+     * 
+     * @param array $r
+     * @param null $q
+     * @param null $data
+     * @return array|mixed
+     */
     protected function setResource(array $r, $q = null, $data = null) {
         return $this->useResource('PUT', $r, $q, $data);
     }
 
+    /**
+     * Call an API point that deletes a resource
+     * 
+     * @param array $r
+     * @param null $q
+     * @param null $data
+     * @return array|mixed
+     */
     protected function deleteResource(array $r, $q = null, $data = null) {
         return $this->useResource('DELETE', $r, $q, $data);
     }
 
     // VIDEO LANGUAGE RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#video-language-resource
-
+    
     /**
      * Listing video languages
      *
      * @since 0.4.0
+     * @param array $r
+     * @return array|mixed|null
      */
     function getVideoLanguages(array $r) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
@@ -398,6 +421,8 @@ class API {
      * not to confuse them with the query parameters themselves
      *
      * @since 0.4.0
+     * @param array $r
+     * @return array|mixed|null
      */
     function getVideoLanguage(array $r) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
@@ -416,12 +441,14 @@ class API {
      * Note that the versions array starts at 0, but
      * the version numbering starts at 1.
      *
-     * Versions are in reverse order, versions[0]
-     * is always the latest one. Because versions can be
-     * deleted, the version_no can't be used in any way
+     * Versions are in reverse order, versions[0] is always the latest one.
+     * Because versions can be deleted, the version_no can't be used
      * as index of the versions array.
      *
      * @since 0.1.0
+     * @param $lang_info
+     * @return null
+     * @throws \UnknownException
      */
     function getLastVersion($lang_info) {
         if (!is_object($lang_info)) {
@@ -441,7 +468,7 @@ class API {
 
     // VIDEO RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#video-resource
-
+    
     /**
      * Get information about all videos in a team/project
      *
@@ -452,6 +479,8 @@ class API {
      * if you'd rather not wait for this method to finish.
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function getVideos(array $r) {
         $res = array(
@@ -474,6 +503,8 @@ class API {
      * since each video url is associated to a unique video id.
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed|null
      */
     function getVideoInfo(array $r) {
         $query = array();
@@ -500,9 +531,11 @@ class API {
      * Adds a new video with a given URL
      *
      * Requires to specify a team since this component is mostly used
-     * for team videos that shouldn't get posted publicly. 
+     * for team videos that shouldn't get posted publicly.
      *
      * @since 0.5.0
+     * @param array $r
+     * @return array|mixed
      */
     function createVideo(array $r) {
         $query = array();
@@ -526,7 +559,7 @@ class API {
         }
         return $this->createResource($res, $query, $data);
     }
-    
+
 
     /**
      * Move a video into a different team/project
@@ -534,6 +567,8 @@ class API {
      * https://amara.readthedocs.io/en/latest/api.html#moving-videos-between-teams-and-projects
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed|null
      */
     function moveVideo(array $r) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
@@ -557,6 +592,8 @@ class API {
      * Currently broken
      *
      * @since 0.4.2
+     * @param array $r
+     * @return array|mixed|null
      */
     function renameVideo(array $r) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
@@ -574,6 +611,7 @@ class API {
 
     // PROJECTS RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#projects-resource
+    
     /**
      * Get all the projects in a team
      *
@@ -642,6 +680,8 @@ class API {
      * See https://amara.readthedocs.io/en/latest/api.html#activity-resource
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function getActivities(array $r = array()) {
         $res = array(
@@ -665,6 +705,8 @@ class API {
      * Retrieve a singe activity record
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function getActivity(array $r) {
         $res = array(
@@ -682,6 +724,8 @@ class API {
      * Retrieve a set of task records
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function getTasks(array $r) {
         $res = array(
@@ -708,9 +752,11 @@ class API {
      * Retrieve a singe task record
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function getTaskInfo(array $r) {
-        $r = array(
+        $res = array(
             'resource' => 'task',
             'content_type' => 'json',
             'team' => $r['team'],
@@ -727,6 +773,9 @@ class API {
      * request.
      *
      * @since 0.1.0
+     * @param array $r
+     * @param null $lang_info
+     * @return array|mixed|null
      */
     function createTask(array $r, &$lang_info = null) {
         if (!is_object($lang_info)) { $lang_info = null; }
@@ -758,6 +807,8 @@ class API {
      * Delete a task
      *
      * @since 0.1.0
+     * @param array $r
+     * @return array|mixed
      */
     function deleteTask(array $r) {
         $res = array(
@@ -767,6 +818,128 @@ class API {
             'task_id' => $r['task_id']
        );
         return $this->deleteResource($res);
+    }
+
+
+    // SUBTITLE REQUEST RESOURCE
+    // https://amara.readthedocs.io/en/latest/api.html#subtitle-request-resource
+    
+    /**
+     * List requests
+     *
+     * List open collaboration requests. The language filter refers to the collaboration language,
+     * as opposed to the video's primary language.
+     *
+     * @param array $r
+     * @return array|mixed
+     * @since 0.8.0
+     */
+    function getRequests(array $r) {
+        $res = array(
+            'resource' => 'team_requests',
+            'content_type' => 'json',
+            'team' => $r['team']
+        );
+        $query = array(
+            'state' => isset($r['state']) ? $r['state'] : null,
+            'video' => isset($r['video_id']) ? $r['video_id'] : null,
+            'language' => isset($r['language_code']) ? $r['language_code'] : null,
+            'video_language' => isset($r['video_language']) ? $r['video_language'] : null,
+            'project' => isset($r['project']) ? $r['project'] : null,
+            'assignee' => isset($r['assignee']) ? $r['assignee'] : null
+        );
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * Get details about a collaboration request
+     *
+     * @param array $r
+     * @return array|mixed
+     * @since 0.8.0
+     */
+    function getRequestInfo(array $r) {
+        $res = array(
+            'resource' => 'subtitle_request',
+            'content_type' => 'json',
+            'job_id' => $r['job_id']
+        );
+        $query = array();
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * List remote collaboration requests
+     *
+     * @param array $r
+     * @return array|mixed
+     * @since 0.8.0
+     */
+    function getRemoteRequests(array $r) {
+        $res = array(
+            'resource' => 'team_requests_remote',
+            'content_type' => 'json',
+            'team' => $r['team']
+        );
+        $query = array(
+            'state' => isset($r['state']) ? $r['state'] : null,
+            'video' => isset($r['video_id']) ? $r['video_id'] : null,
+            'video_language' => isset($r['language_code']) ? $r['language_code'] : null,
+            'language' => isset($r['language']) ? $r['language'] : null,
+            'project' => isset($r['project']) ? $r['project'] : null
+        );
+        return $this->getResource($res, $query);
+    }
+
+
+    /**
+     * Create a collaboration request
+     *
+     * @param array $r
+     * @return array|mixed
+     * @since 0.8.0
+     */
+    function createRequest(array $r) {
+        $res = array(
+            'resource' => 'subtitle_requests',
+            'content_type' => 'json'
+        );
+        $query = array();
+        $data = array(
+            'video' => $r['video_id'],
+            'language' => $r['language_code'],
+        );
+        if (isset($r['team'])) { $data['team'] = $r['team']; }
+        if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
+        return $this->createResource($res, $query, $data);
+    }
+
+
+    /**
+     * Update a collaboration request
+     *
+     * Note that if subtitler, reviewer and approver are null they will be unassigned.
+     * To skip modifying them, the keys need to be unset in the $data, rather than null
+     * hence the conditional assignments.
+     *
+     * @param array $r
+     * @return mixed
+     * @since 0.8.0
+     */
+    function updateRequest(array $r) {
+        $res = array(
+            'resource' => 'subtitle_request',
+            'content_type' => 'json',
+            'job_id' => $r['job_id']
+        );
+        $query = array();
+        $data = array();
+        if (isset($r['subtitler'])) { $data['subtitler'] = $r['subtitler']; }
+        if (isset($r['reviewer'])) { $data['reviewer'] = $r['reviewer']; }
+        if (isset($r['approver'])) { $data['approver'] = $r['approver']; }
+        if (isset($r['team'])) { $data['team'] = $r['team']; }
+        if (isset($r['state'])) { $data['state'] = $r['state']; }
+        return $this->setResource($res, $query, $data);
     }
 
     // SUBTITLES RESOURCE
@@ -784,6 +957,9 @@ class API {
      * passing one of the formats through a parser.
      *
      * @since 0.1.0
+     * @param array $r
+     * @param null $lang_info
+     * @return array|mixed|null
      */
     function getSubtitle(array $r, &$lang_info = null) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
@@ -806,7 +982,7 @@ class API {
             'format' => isset($r['format']) ? $r['format'] : 0,
             'version' => isset($r['version']) ? $r['version'] : 0
        );
-        return $this->getResource($res, $query);
+       return $this->getResource($res, $query);
     }
 
     /**
@@ -821,6 +997,9 @@ class API {
      * Note that sub_format defaults to SRT.
      *
      * @since 0.1.0
+     * @param array $r
+     * @param null $lang_info
+     * @return array|mixed|null
      */
     function uploadSubtitle(array $r, &$lang_info = null) {
         // Create the language if it doesn't exist
@@ -863,6 +1042,8 @@ class API {
      * Get the list of members in a team
      *
      * @since 0.2.0
+     * @param array $r
+     * @return array|mixed
      */
     function getMembers(array $r) {
         $res = array(
@@ -888,6 +1069,8 @@ class API {
      * This is configured by Amara's admins.
      *
      * @since 0.2.0
+     * @param array $r
+     * @return array|mixed
      */
     function addPartnerMember(array $r) {
         $res = array(
@@ -911,10 +1094,12 @@ class API {
      * to join the team, which the user can refuse.
      *
      * @since 0.2.0
+     * @param array $r
+     * @return array|mixed
      */
     function addMember(array $r) {
         $res = array(
-            'resource' => 'safe-members',
+            'resource' => 'safe_members',
             'content_type' => 'json',
             'team' => $r['team']
        );
@@ -930,6 +1115,8 @@ class API {
      * Remove a member from a team
      *
      * @since 0.2.0
+     * @param array $r
+     * @return array|mixed
      */
     function deleteMember(array $r) {
         $res = array(
@@ -948,7 +1135,9 @@ class API {
      * Get user detail
      *
      * @since 0.2.0
-    */
+     * @param array $r
+     * @return array|mixed
+     */
     function getUser(array $r) {
         $res = array(
             'resource' => 'users',
@@ -962,6 +1151,8 @@ class API {
      * Returns an array of user objects for the given list of users
      *
      * @since 0.3.0
+     * @param array $users
+     * @return array|null
      */
     function getUsers(array $users) {
         if (empty($users)) { return null; }
@@ -974,7 +1165,6 @@ class API {
            );
             $user = $this->getResource($res);
             if (!is_object($user)) {
-                // TODO: Handle/Log error.
                 continue;
             }
             $result[$i] = $user;
@@ -989,6 +1179,8 @@ class API {
      * Get information about all applications in a team
      *
      * @since 0.6.0
+     * @param array $r
+     * @return array|mixed
      */
 
     function getApplications(array $r) {
@@ -1017,8 +1209,11 @@ class API {
      * until we have some assurance the host is an Amara install,
      * otherwise you could leak the credentials to somewhere unexpected.
      *
-     * @todo Validate URL
      * @since 0.1.0
+     * @param $host
+     * @param $user
+     * @param $apikey
+     * @return bool
      */
     function validateAccount($host, $user, $apikey) {
         if (strlen($apikey) !== 40) {
@@ -1032,23 +1227,25 @@ class API {
     /**
      * Validate an username
      *
-     * This method will eventually support using a cached userlist
-     *
      * @since 0.2.0
+     * @param $r
+     * @return array|mixed
      */
-    function isValidUser($r, $use_cache = null) {
+    function isValidUser($r) {
         return $this->getUser(array('username' => $r));
     }
-
 
     /**
      * Check if an object has the expected methods
      *
      * @since 0.1.0
+     * @param object $object
+     * @param array $valid_methods
+     * @return bool
      */
-    function isValidObject(object $object, array $valid_methods) {
-        $obj_methods = get_class_methods($object);
-        if (count(array_intersect($valid_methods, $obj_methods)) === count($valid_methods)) {
+    function isValidObject(object $object, array $validMethods) {
+        $objMethods = get_class_methods($object);
+        if (count(array_intersect($validMethods, $objMethods)) === count($validMethods)) {
             return true;
         }
         return false;
@@ -1058,11 +1255,13 @@ class API {
      * Check if a string looks like a valid video ID
      *
      * @since 0.1.0
+     * @param $video_id
+     * @return bool
      */
-    function isValidVideoID($video_id) {
-        if (strlen($video_id) !== 12) {
+    function isValidVideoID($videoId) {
+        if (strlen($videoId) !== 12) {
             return false;
-        } elseif (preg_match('/^[A-Za-z0-9]*$/', $video_id) !== 1) {
+        } elseif (preg_match('/^[A-Za-z0-9]*$/', $videoId) !== 1) {
             return false;
         }
         return true;
@@ -1072,6 +1271,8 @@ class API {
      * Check if a variable is a valid role string
      *
      * @since 0.2.0
+     * @param $role
+     * @return bool
      */
     function isValidRole($role) {
         if (!isset($role) || !is_string($role)) { return false; }
@@ -1080,6 +1281,9 @@ class API {
 
     /**
      * Check if a task name is valid
+     *
+     * @param $taskName
+     * @return bool
      */
     function isValidTaskName($taskName) {
         if (!isset($taskName) || !is_string($taskName)) { return false; }
@@ -1087,12 +1291,12 @@ class API {
     }
 
 
-
     /**
      * Check if a string is a valid language codec
      *
      * @since 0.3.0
-     * @TODO Optionally fetch a list of language codes
+     * @param $languageCode
+     * @return bool
      */
     function isValidLanguageCode($languageCode) {
 	    $amaraLanguages = array("aa", "ab", "ae", "af", "aka", "amh", "an", "arc", "ar", "arq", "ase", "as", "ast", "av", "ay", "az", "bam", "ba", "be", "ber", "bg", "bh", "bi", "bn", "bnt", "bo", "br", "bs", "bug", "cak", "ca", "ceb", "ce", "ch", "cho", "cku", "co", "cr", "cs", "ctd", "ctu", "cu", "cu", "cv", "cy", "da", "de", "dv", "dz", "ee", "efi", "el", "en-gb", "en", "eo", "es-ar", "es-mx", "es", "es-ni", "et", "eu", "fa", "ff", "fil", "fi", "fj", "fo", "fr-ca", "fr", "fy", "fy-nl", "ga", "gd", "gl", "gn", "gu", "gv", "hai", "hau", "haw", "haz", "hus", "hb", "hch", "he", "hi", "ho", "hr", "ht", "hu", "hup", "hy", "hz", "ia", "ibo", "id", "ie", "ig", "ii", "ik", "ilo", "inh", "io", "iro", "is", "it", "iu", "ja", "jv", "ka", "kar", "kau", "kg", "kik", "ki", "kin", "kj", "kk", "kl", "km", "kn", "ko", "kon", "kr", "ksh", "ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "lg", "li", "lin", "lkt", "lld", "ln", "lo", "lt", "ltg", "lu", "lua", "luo", "luy", "lv", "mad", "meta-audio", "meta-geo", "meta-tw", "meta-wiki", "mg", "mh", "mi", "mk", "ml", "mlg", "mo", "moh", "mn", "mni", "mnk", "mos", "mr", "ms", "mt", "mus", "my", "na", "nan", "nb", "nci", "nd", "ne", "ng", "nl", "nn", "no", "nr", "nso", "nv", "ny", "oc", "oji", "om", "or", "orm", "os", "pa", "pam", "pan", "pap", "pi", "pl", "pnb", "prs", "ps", "pt-br", "pt", "que", "qvi", "raj", "rm", "rn", "ro", "ru", "run", "rup", "ry", "rw", "sa", "sc", "sco", "sd", "se", "sg", "sgn", "sh", "si", "sk", "skx", "sl", "sm", "sna", "sot", "sa", "sq", "sr-latn", "sr", "srp", "ss", "st", "su", "sv", "swa", "szl", "ta", "tar", "te", "tet", "tg", "th", "tir", "tk", "tl", "tlh", "tn", "to", "toj", "tr", "ts", "tsn", "tsz", "tt", "tw", "ty", "tzh", "tzo", "ug", "uk", "umb", "ur", "uz", "ve", "vi", "vls", "vo", "wa", "wbl", "wol", "xho", "yaq", "yi", "yor", "yua", "za", "zam", "zh-cn", "zh-hk", "zh", "zh-sg", "zh-tw", "zul");
@@ -1103,11 +1307,15 @@ class API {
      * Exception messages
      *
      * @since 0.4.1
+     * @param $type
+     * @param $caller
+     * @param $expected
+     * @param $got
      */
-    protected function throwException($type, $caller, $expected, $argument) {
+    protected function throwException($type, $caller, $expected, $got) {
         switch ($type) {
             case "InvalidArgumentType":
-                $message = "Argument passed to {$caller} must be of the type {$expected}, " . gettype($argument) . ' given.';
+                $message = "Argument passed to {$caller} must be of the type {$expected}, " . gettype($got) . ' given.';
                 throw new \InvalidArgumentException($message);
                 break;
             case "InvalidAPIAccount":
@@ -1122,26 +1330,31 @@ class API {
 
     }
 
-}
-
-/**
- * Dummy PSR-3 logger
- *
- * Used as dummy in case no valid PSR-3 logger was supplied,
- * so we don't get E_FATALs when we try to log something.
- *
- * Currently unused -- logging points will be added soon.
- *
- * @used-by AmaraAPI
- */
-class DummyLogger {
-    function emergency($message, array $context = array()) {}
-    function alert($message, array $context = array()) {}
-    function critical($message, array $context = array()) {}
-    function error($message, array $context = array()) {}
-    function warning($message, array $context = array()) {}
-    function notice($message, array $context = array()) {}
-    function info($message, array $context = array()) {}
-    function debug($message, array $context = array()) {}
-    function log($level, $message, array $context = array()) {}
+    // ------------------------
+    // LOGGING
+    // ------------------------
+    /**
+     * PSR-3 logger
+     *
+     * Levels:
+     * EMERGENCY: System is unusable.
+     * ALERT: Action must be taken immediately.
+     * CRITICAL: Critical conditions.
+     * ERROR: Runtime errors that do not require immediate action but should typically
+     * WARNING: Exceptional occurrences that are not errors.
+     * NOTICE: Normal but significant events.
+     * INFO: Interesting events.
+     * DEBUG: Detailed debug information.
+     *
+     * @param mixed $level
+     * @param string $message
+     * @param array $context
+     * @since 0.8.0
+     * @return null
+     */
+    public function log($level, string $message, array $context = array()) {
+        if ($this->logger !== null) {
+            $this->logger->log($level, $message, $context);
+        }
+    }
 }
