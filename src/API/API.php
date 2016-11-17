@@ -10,11 +10,11 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.9.0
+ * @version 0.10.0
  *
  */
 class API {
-    const VERSION = '0.9.0';
+    const VERSION = '0.10.0';
 
     /**
      * Credentials
@@ -215,6 +215,12 @@ class API {
             case 'video':
                 $url = "{$this->host}videos/{$r['video_id']}/";
                 break;
+            case 'video_urls':
+                $url = "{$this->host}videos/{$r['video_id']}/urls/";
+                break;
+            case 'video_url':
+                $url = "{$this->host}videos/{$r['video_id']}/urls/{$r['url_id']}/";
+                break;
             case 'languages':
                 $url = "{$this->host}videos/{$r['video_id']}/languages/";
                 break;
@@ -257,12 +263,6 @@ class API {
             case 'subtitle_request':
                 $url = "{$this->host}teams/{$r['team']}/subtitle-requests/{$r['job_id']}/";
                 break;
-            //case 'team_requests':
-            //    $url = "{$this->host}teams/{$r['team']}/subtitle-requests/";
-            //    break;
-            //case 'subtitle_requests_remote':
-            //    $url = "{$this->host}teams/{$r['team']}/subtitle-requests/remote/";
-            //    break;
             default:
                 return null;
         }
@@ -580,8 +580,7 @@ class API {
                     'resource' => 'videos',
                     'content_type' => 'json'
                 );
-            $query = array(
-                );
+            $query = array();
             $data = array(
                     'team' => $r['team'],
                     'project' => isset($r['project']) ? $r['project'] : null,
@@ -643,6 +642,118 @@ class API {
        );
         return $this->setResource($res, null, $data);
     }
+
+
+    // VIDEO URL RESOURCE
+    // https://amara.readthedocs.io/en/latest/api.html#video-url-resource
+
+    /**
+     * Get all URLs for a given video ID
+     *
+     * @since 0.10.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function getVideoURLs(array $r = array()) {
+        $res = array(
+            'resource' => 'video_urls',
+            'content_type' => 'json',
+            'video_id' => $r['video_id'],
+        );
+        $query = array();
+        return $this->getResource($res, $query);
+    }
+
+
+    /**
+     * Get details about a specific URL
+     *
+     * url_id is provided by resource_uri from getVideoURLs
+     *
+     * @since 0.10.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function getVideoURL(array $r = array()) {
+        $res = array(
+            'resource' => 'video_url',
+            'content_type' => 'json',
+            'video_id' => $r['video_id'],
+            'url_id' => $r['url_id']
+        );
+        $query = array();
+        return $this->getResource($res, $query);
+    }
+
+
+    /**
+     * Adds a new URL for a given video ID
+     *
+     * @since 0.10.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function addVideoURL(array $r = array()) {
+        $res = array(
+            'resource' => 'video_urls',
+            'content_type' => 'json',
+            'video_id' => $r['video_id']
+        );
+        $query = array();
+        $data = array(
+            'url' => $r['url'],
+            'primary' => $r['primary'],
+            'original' => $r['original']
+        );
+        return $this->createResource($res, $query, $data);
+    }
+
+
+    /**
+     * Modify the Primary flag for a given video URL
+     *
+     * url_id is provided by resource_uri from getVideoURLs
+     *
+     * @since 0.10.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function setVideoURL(array $r = array()) {
+        $res = array(
+            'resource' => 'video_url',
+            'content_type' => 'json',
+            'video_id' => $r['video_id'],
+            'url_id' => $r['url_id']
+        );
+        $query = array();
+        $data = array(
+            'primary' => $r['primary']
+        );
+        return $this->setResource($res, $query, $data);
+    }
+
+
+    /**
+     * Delete a given video URL
+     *
+     * url_id is provided by resource_uri from getVideoURLs
+     *
+     * @since 0.10.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function deleteVideoURL(array $r = array()) {
+        $res = array(
+            'resource' => 'video_url',
+            'content_type' => 'json',
+            'video_id' => $r['video_id'],
+            'url_id' => $r['url_id']
+        );
+        $query = array();
+        $data = array();
+        return $this->deleteResource($res, $query, $data);
+    }
+
 
     // PROJECTS RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#projects-resource
