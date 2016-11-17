@@ -10,20 +10,23 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.8.0
+ * @version 0.9.0
  *
  */
 class API {
-    const VERSION = '0.8.0';
+    const VERSION = '0.9.0';
 
     /**
      * Credentials
+     *
+     * APIVersion: key - value pair to add to the GET request, e.g. apifuture=>20161201
      *
      * @since 0.1.0
      */
     protected $host;
     protected $user;
-    protected $apikey;
+    protected $APIKey;
+    protected $APIVersion;
 
     /**
      * External dependencies
@@ -40,18 +43,18 @@ class API {
      * requests that take longer than a minute time out e.g. on videos
      * with many languages.
      *
-     * $total_limit caps how many records you can retrieve from paged
+     * $totalLimit caps how many records you can retrieve from paged
      * resources. Some resources like team activity can have tens of thousands of records
      * and things (e.g. connection hiccups) can go wrong trying to fetch them all at once.
-     * You may want to raise the total_limit explicitly for certain actions, or use
+     * You may want to raise the totalLimit explicitly for certain actions, or use
      * the $offset argument when calling paged getX methods and aggregate the responses.
      *
      * @since 0.1.0
     */
     public $retries = 10;
     public $limit = 10;
-    public $total_limit = 2000;
-    public $verbose_curl = false;
+    public $totalLimit = 2000;
+    public $verboseCurl = false;
 
     /**
      * Initialization
@@ -59,10 +62,11 @@ class API {
      * @since 0.1.0
      * @param $host
      * @param $user
-     * @param $apikey
+     * @param $APIKey
      */
-    function __construct($host, $user, $apikey, $logger = null) {
-        $this->setAccount($host, $user, $apikey);
+    function __construct($host, $user, $APIKey, $APIVersion = null, $logger = null) {
+        $this->setAccount($host, $user, $APIKey);
+        $this->setAPIVersion($APIVersion);
         $this->setLogger($logger);
     }
 
@@ -72,30 +76,61 @@ class API {
      * @since 0.1.0
      * @param $host
      * @param $user
-     * @param $apikey
+     * @param $APIKey
      * @throws \InvalidAPIAccount
      */
-    function setAccount($host, $user, $apikey) {
-        $this->validateAccount($host, $user, $apikey);
-        if ($this->host !== $host && $this->apikey === $apikey) {
+    function setAccount($host, $user, $APIKey, array $APIVersion = []) {
+        $this->validateAccount($host, $user, $APIKey);
+        if ($this->host !== $host && $this->APIKey === $APIKey) {
             $this->throwException(
-                'InvalidAPIAccount',
+                'InvalidAPISettings',
                 __METHOD__,
                 'Different API key when changing hosts',
-                'Same API key when changing hosts'
+                'API key should be the same when changing hosts'
             );
-        } elseif ($this->apikey !== $apikey && $this->user === $user) {
+        } elseif ($this->APIKey !== $APIKey && $this->user === $user) {
             $this->throwException(
-                'InvalidAPIAccount',
+                'InvalidAPISettings',
                 __METHOD__,
                 'Different API key when changing usernames',
-                'Same API key when changing usernames'
+                'API key should be the same when changing usernames'
             );
         }
+        $this->setAPIVersion($APIVersion);
         $this->user = $user;
-        $this->apikey = $apikey;
+        $this->APIKey = $APIKey;
         $this->host = $host;
     }
+
+
+    /**
+     * Set the API version as a key-value parameter for the resource URL
+     *
+     * @param array $APIVersion
+     * @return bool
+     */
+    function setAPIVersion($APIVersion) {
+        if (empty($APIVersion)) { return false; }
+        if (count($APIVersion) > 1) {
+            $this->throwException(
+                'InvalidAPISettings',
+                __METHOD__,
+                'Too many elements passed for the API Version',
+                'API Version should be one key-value pair or nothing'
+            );
+        }
+        if (!is_string(array_keys($APIVersion))) {
+            $this->throwException(
+                'InvalidAPISettings',
+                __METHOD__,
+                'API Version key is not a string',
+                'API Version key should be a string'
+            );
+        }
+        $this->APIVersion = $APIVersion;
+        return true;
+    }
+
 
 
     /**
@@ -112,7 +147,7 @@ class API {
                 'InvalidLogger',
                 __METHOD__,
                 'Provided logger lacks PSR-3 methods',
-                'PSR-3 logger'
+                'Logger should be PSR-3'
             );
         }
         $this->logger = $logger;
@@ -131,7 +166,7 @@ class API {
      * @throws \InvalidAPIAccount
      */
     function getHeader($ct = null) {
-        assert($this->validateAccount($this->host, $this->user, $this->apikey));
+        assert($this->validateAccount($this->host, $this->user, $this->APIKey));
         if (!is_string($ct) && !is_null($ct)) {
             $this->throwException(
                 'InvalidAPIAccount',
@@ -142,7 +177,7 @@ class API {
         }
         $r = array(
             "X-api-username: {$this->user}",
-            "X-apikey: {$this->apikey}"
+            "X-APIKey: {$this->APIKey}"
         );
         if ($ct === 'json') { $r = array_merge($r, array(
             'Content-Type: application/json',
@@ -217,17 +252,17 @@ class API {
                 $url = "{$this->host}teams/{$r['team']}/projects/{$r['project']}/";
                 break;
             case 'subtitle_requests':
-                $url = "{$this->host}subtitle-requests/";
-                break;
-            case 'subtitle_request':
-                $url = "{$this->host}subtitle-requests/{$r['job_id']}/";
-                break;
-            case 'team_requests':
                 $url = "{$this->host}teams/{$r['team']}/subtitle-requests/";
                 break;
-            case 'team_requests_remote':
-                $url = "{$this->host}teams/{$r['team']}/subtitle-requests/remote/";
+            case 'subtitle_request':
+                $url = "{$this->host}teams/{$r['team']}/subtitle-requests/{$r['job_id']}/";
                 break;
+            //case 'team_requests':
+            //    $url = "{$this->host}teams/{$r['team']}/subtitle-requests/";
+            //    break;
+            //case 'subtitle_requests_remote':
+            //    $url = "{$this->host}teams/{$r['team']}/subtitle-requests/remote/";
+            //    break;
             default:
                 return null;
         }
@@ -253,7 +288,7 @@ class API {
         $cr = curl_init();
         curl_setopt($cr, CURLOPT_URL, $url);
         curl_setopt($cr, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($cr, CURLOPT_VERBOSE, $this->verbose_curl);
+        curl_setopt($cr, CURLOPT_VERBOSE, $this->verboseCurl);
         curl_setopt($cr, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($cr, CURLOPT_HTTPHEADER, $header);
         switch ($mode) {
@@ -361,7 +396,7 @@ class API {
      * @param null $data
      * @return array|mixed
      */
-    protected function createResource(array $r, $q = null, $data = null) {
+    public function createResource(array $r, $q = null, $data = null) {
         return $this->useResource('POST', $r, $q, $data);
     }
 
@@ -389,8 +424,8 @@ class API {
         return $this->useResource('DELETE', $r, $q, $data);
     }
 
-    // VIDEO LANGUAGE RESOURCE
-    // https://amara.readthedocs.io/en/latest/api.html#video-language-resource
+    // SUBTITLE LANGUAGE RESOURCE
+    // https://amara.readthedocs.io/en/latest/api.html#subtitle-language-resource
     
     /**
      * Listing video languages
@@ -473,7 +508,7 @@ class API {
      * Get information about all videos in a team/project
      *
      * Note that this can take a long time on teams/projects
-     * with many videos. Capped by $this->total_limit.
+     * with many videos. Capped by $this->totalLimit.
      *
      * Use $params['offset'] and your own loop
      * if you'd rather not wait for this method to finish.
@@ -836,7 +871,7 @@ class API {
      */
     function getRequests(array $r) {
         $res = array(
-            'resource' => 'team_requests',
+            'resource' => 'subtitle_requests',
             'content_type' => 'json',
             'team' => $r['team']
         );
@@ -875,6 +910,7 @@ class API {
      * @return array|mixed
      * @since 0.8.0
      */
+    /*
     function getRemoteRequests(array $r) {
         $res = array(
             'resource' => 'team_requests_remote',
@@ -890,7 +926,7 @@ class API {
         );
         return $this->getResource($res, $query);
     }
-
+    */
 
     /**
      * Create a collaboration request
@@ -908,8 +944,8 @@ class API {
         $data = array(
             'video' => $r['video_id'],
             'language' => $r['language_code'],
+            'team' => $r['team']
         );
-        if (isset($r['team'])) { $data['team'] = $r['team']; }
         if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
         return $this->createResource($res, $query, $data);
     }
@@ -929,15 +965,15 @@ class API {
     function updateRequest(array $r) {
         $res = array(
             'resource' => 'subtitle_request',
-            'content_type' => 'json',
-            'job_id' => $r['job_id']
+            'team' => $r['team'],
+            'job_id' => $r['job_id'],
+            'content_type' => 'json'
         );
         $query = array();
         $data = array();
         if (isset($r['subtitler'])) { $data['subtitler'] = $r['subtitler']; }
         if (isset($r['reviewer'])) { $data['reviewer'] = $r['reviewer']; }
         if (isset($r['approver'])) { $data['approver'] = $r['approver']; }
-        if (isset($r['team'])) { $data['team'] = $r['team']; }
         if (isset($r['state'])) { $data['state'] = $r['state']; }
         return $this->setResource($res, $query, $data);
     }
@@ -1212,13 +1248,13 @@ class API {
      * @since 0.1.0
      * @param $host
      * @param $user
-     * @param $apikey
+     * @param $APIKey
      * @return bool
      */
-    function validateAccount($host, $user, $apikey) {
-        if (strlen($apikey) !== 40) {
+    function validateAccount($host, $user, $APIKey) {
+        if (strlen($APIKey) !== 40) {
             throw new \LengthException('The API key is not 40 characters long');
-        } elseif (preg_match('/^[0-9a-f]*$/', $apikey) !== 1) {
+        } elseif (preg_match('/^[0-9a-f]*$/', $APIKey) !== 1) {
             throw new \InvalidArgumentException('The API key should contain lowercase hexadecimal characters only');
         }
         return true;
@@ -1292,7 +1328,7 @@ class API {
 
 
     /**
-     * Check if a string is a valid language codec
+     * Check if a string is a valid language code
      *
      * @since 0.3.0
      * @param $languageCode
@@ -1318,7 +1354,7 @@ class API {
                 $message = "Argument passed to {$caller} must be of the type {$expected}, " . gettype($got) . ' given.';
                 throw new \InvalidArgumentException($message);
                 break;
-            case "InvalidAPIAccount":
+            case "InvalidAPISettings":
                 $message = "Invalid API account settings passed to {$caller}, Expected: {$expected}, Got: {$got}";
                 throw new \InvalidArgumentException($message);
                 break;
