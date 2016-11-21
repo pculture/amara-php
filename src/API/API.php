@@ -10,11 +10,11 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.10.0
+ * @version 0.10.1
  *
  */
 class API {
-    const VERSION = '0.10.0';
+    const VERSION = '0.10.1';
 
     /**
      * Credentials
@@ -1008,6 +1008,7 @@ class API {
         $res = array(
             'resource' => 'subtitle_request',
             'content_type' => 'json',
+            'team' => $r['team'],
             'job_id' => $r['job_id']
         );
         $query = array();
