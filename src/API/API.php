@@ -10,11 +10,11 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.10.1
+ * @version 0.10.2
  *
  */
 class API {
-    const VERSION = '0.10.1';
+    const VERSION = '0.10.2';
 
     /**
      * Credentials
@@ -976,6 +976,9 @@ class API {
      * List open collaboration requests. The language filter refers to the collaboration language,
      * as opposed to the video's primary language.
      *
+     * Set type to 'outgoing' to fetch requests with work on a different team.
+     * They aren't included by default
+     *
      * @param array $r
      * @return array|mixed
      * @since 0.8.0
@@ -992,7 +995,8 @@ class API {
             'language' => isset($r['language_code']) ? $r['language_code'] : null,
             'video_language' => isset($r['video_language']) ? $r['video_language'] : null,
             'project' => isset($r['project']) ? $r['project'] : null,
-            'assignee' => isset($r['assignee']) ? $r['assignee'] : null
+            'assignee' => isset($r['assignee']) ? $r['assignee'] : null,
+            'type' => isset($r['type']) ? $r['type'] : null,
         );
         return $this->getResource($res, $query);
     }
