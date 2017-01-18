@@ -10,11 +10,11 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.10.2
+ * @version 0.11.0
  *
  */
 class API {
-    const VERSION = '0.10.2';
+    const VERSION = '0.11.0';
 
     /**
      * Credentials
@@ -43,17 +43,10 @@ class API {
      * requests that take longer than a minute time out e.g. on videos
      * with many languages.
      *
-     * $totalLimit caps how many records you can retrieve from paged
-     * resources. Some resources like team activity can have tens of thousands of records
-     * and things (e.g. connection hiccups) can go wrong trying to fetch them all at once.
-     * You may want to raise the totalLimit explicitly for certain actions, or use
-     * the $offset argument when calling paged getX methods and aggregate the responses.
-     *
      * @since 0.1.0
     */
     public $retries = 10;
     public $limit = 10;
-    public $totalLimit = 2000;
     public $verboseCurl = false;
 
     /**
@@ -347,7 +340,7 @@ class API {
      * @param null $data
      * @return array|mixed
      */
-    protected function useResource($method, array $r, $q = null, $data = null) {
+    protected function useResource($method, array $r, $q = null, $data = null, callable $filter = null) {
         $result = array();
         $header = $this->getHeader(isset($r['content_type']) ? $r['content_type'] : null);
         if (isset($data) && $r['content_type'] === 'json') { $data = json_encode($data); }
@@ -366,12 +359,19 @@ class API {
             if (!is_array($resultChunk->objects)) {
                 throw new \UnexpectedValueException('\'objects\' property is not an array');
             }
+            // Use a callable function to filter the results
+            // The callable may set ->meta->next to null if the fetching loop
+            // should end early
+            if ($filter !== null) {
+                $resultChunk = call_user_func($filter, $resultChunk);
+            }
             $result = array_merge($result, $resultChunk->objects);
             if ($resultChunk->meta->next === null) {
                 break;
             }
             if (!isset($q['offset'])) { $q['offset'] = 0; }
             $q['offset'] += (isset($q['limit']) ? $q['limit'] : $this->limit);
+
         } while($resultChunk->meta->next + $q['offset'] < $resultChunk->meta->total_count);
         return $result;
     }
@@ -384,8 +384,8 @@ class API {
      * @param null $data
      * @return array|mixed
      */
-    protected function getResource(array $r, $q = null, $data = null) {
-        return $this->useResource('GET', $r, $q, $data);
+    protected function getResource(array $r, $q = null, $data = null, callable $filter = null) {
+        return $this->useResource('GET', $r, $q, $data, $filter);
     }
 
     /**
@@ -508,7 +508,11 @@ class API {
      * Get information about all videos in a team/project
      *
      * Note that this can take a long time on teams/projects
-     * with many videos. Capped by $this->totalLimit.
+     * with many videos.
+     *
+     * You can pass a callable function as $r['filter'] to perform an operation
+     * during the loop. For example, set ->meta->next to null if a certain creation
+     * date has been reached.
      *
      * Use $params['offset'] and your own loop
      * if you'd rather not wait for this method to finish.
@@ -521,14 +525,22 @@ class API {
         $res = array(
             'resource' => 'videos',
             'content_type' => 'json',
-       );
+        );
         $query = array(
             'team' => isset($r['team']) ? $r['team'] : null,
             'project' => isset($r['project']) ? $r['project'] : null,
+            'order_by' => isset($r['order_by']) ? $r['order_by'] : null,
             'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
             'offset' => isset($r['offset']) ? $r['offset'] : 0
-       );
-        return $this->getResource($res, $query);
+        );
+        $filter = null;
+        if (isset($r['filter'])) {
+            if (!is_callable($r['filter'])) {
+                throw new \UnexpectedValueException('The \'filter\' argument is not a callable function.');
+            }
+            $filter = $r['filter'];
+        };
+        return $this->getResource($res, $query, null, $filter);
     }
 
     /**
@@ -583,18 +595,49 @@ class API {
             $query = array();
             $data = array(
                     'team' => $r['team'],
-                    'project' => isset($r['project']) ? $r['project'] : null,
-                    'title' => isset($r['title']) ? $r['title'] : '',
-                    'description' => isset($r['description']) ? $r['description'] : '',
                     'video_url' => $r['video_url'],
-                    'duration' => isset($r['duration']) ? $r['duration'] : null,
-                    'primary_audio_language_code' => $r['primary_language'],
             );
+            if (isset($r['title'])) { $data['title'] = $r['title']; }
+            if (isset($r['description'])) { $data['description'] = $r['description']; }
+            if (isset($r['duration'])) { $data['duration'] = $r['duration']; }
+            if (isset($r['primary_audio_language'])) { $data['primary_audio_language'] = $r['primary_audio_language']; }
+            if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
+            if (isset($r['project'])) { $data['project'] = $r['project']; }
         }
         return $this->createResource($res, $query, $data);
     }
 
-
+    /**
+     * Update an existing video 
+     * 
+     * @param array $r
+     * @return array|mixed|null
+     * @since 0.11.0
+     */
+    function updateVideo(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        $res = array(
+            'resource' => 'video',
+            'content_type' => 'json',
+            'video_id' => $r['video_id']
+        );
+        $query = array();
+        $data = array();
+        if (isset($r['project']) && !isset($r['team'])) {
+            throw new \InvalidArgumentException("Can't specify project without specifying team");
+        }
+        if (isset($r['team'])) { $data['team'] = $r['team']; }
+        if (isset($r['project'])) { $data['project'] = $r['project']; }
+        if (isset($r['video_url'])) { $data['video_url'] = $r['video_url']; }
+        if (isset($r['title'])) { $data['title'] = $r['title']; }
+        if (isset($r['description'])) { $data['description'] = $r['description']; }
+        if (isset($r['duration'])) { $data['duration'] = $r['duration']; }
+        if (isset($r['primary_audio_language'])) { $data['primary_audio_language'] = $r['primary_audio_language']; }
+        if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
+        return $this->setResource($res, $query, $data);
+    }
+    
+    
     /**
      * Move a video into a different team/project
      *
@@ -605,18 +648,9 @@ class API {
      * @return array|mixed|null
      */
     function moveVideo(array $r) {
-        if (!$this->isValidVideoID($r['video_id'])) { return null; }
-        $res = array(
-            'resource' => 'video',
-            'content_type' => 'json',
-            'video_id' => $r['video_id']
-        );
-        $query = array();
-        $data = array(
-            'team' => $r['team'],
-            'project' => $r['project']
-       );
-        return $this->setResource($res, $query, $data);
+        $res = array('team' => $r['team']);
+        if (isset($r['project'])) { $res['project'] = $r['project']; }
+        return $this->updateVideo($res);
     }
 
     /**
@@ -630,17 +664,10 @@ class API {
      * @return array|mixed|null
      */
     function renameVideo(array $r) {
-        if (!$this->isValidVideoID($r['video_id'])) { return null; }
-        $res = array(
-            'resource' => 'video',
-            'content_type' => 'json',
-            'video_id' => $r['video_id']
-       );
-        $data = array(
-            'title' => $r['title'],
-            'description' => $r['description']
-       );
-        return $this->setResource($res, null, $data);
+        $res = array();
+        if (isset($r['title'])) { $res['title'] = $r['title']; }
+        if (isset($r['description'])) { $res['description'] = $r['description']; }
+        return $this->updateVideo($res);
     }
 
 
