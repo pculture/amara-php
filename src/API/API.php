@@ -236,10 +236,10 @@ class API {
                 $url = "{$this->host}teams/{$r['team']}/safe-members/";
                 break;
             case 'member':
-                $url = "{$this->host}teams/{$r['team']}/members/{$r['username']}/";
+                $url = "{$this->host}teams/{$r['team']}/members/{$r['user']}/";
                 break;
             case 'users':
-                $url = "{$this->host}users/{$r['username']}/";
+                $url = "{$this->host}users/{$r['user']}/";
                 break;
             case 'applications':
                 $url = "{$this->host}teams/{$r['team']}/applications/";
@@ -1260,7 +1260,7 @@ class API {
         $query = array(
        );
         $data = array(
-            'username' => $r['username'],
+            'user' => $r['user'],
             'role' => $r['role']
        );
         return $this->createResource($res, $query, $data);
@@ -1284,7 +1284,7 @@ class API {
        );
         $query = array();
         $data = array(
-            'username' => $r['username'],
+            'user' => $r['user'],
             'role' => $r['role']
        );
         return $this->createResource($res, $query, $data);
@@ -1302,7 +1302,7 @@ class API {
             'resource' => 'member',
             'content_type' => 'json',
             'team' => $r['team'],
-            'username' => $r['username']
+            'user' => $r['user']
        );
         return $this->deleteResource($res);
     }
@@ -1321,7 +1321,7 @@ class API {
         $res = array(
             'resource' => 'users',
             'content_type' => 'json',
-            'username' => $r['username']
+            'user' => $r['user']
        );
         return $this->getResource($res);
     }
@@ -1340,7 +1340,7 @@ class API {
             $res = array(
                 'resource' => 'users',
                 'content_type' => 'json',
-                'username' => $users[$i]
+                'user' => $users[$i]
            );
             $user = $this->getResource($res);
             if (!is_object($user)) {
