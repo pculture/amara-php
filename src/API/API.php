@@ -10,11 +10,11 @@ namespace AmaraPHP;
  * @author Fran Ontanaya
  * @copyright 2016 Fran Ontanaya
  * @license GPLv3
- * @version 0.11.0
+ * @version 0.12.0
  *
  */
 class API {
-    const VERSION = '0.11.0';
+    const VERSION = '0.12.0';
 
     /**
      * Credentials
@@ -39,9 +39,7 @@ class API {
     /**
      * Settings
      *
-     * Beware raising $limit (the number of records per request) too much,
-     * requests that take longer than a minute time out e.g. on videos
-     * with many languages.
+     * $limit: number of records per request. Keep low to avoid timeouts.
      *
      * @since 0.1.0
     */
@@ -124,8 +122,6 @@ class API {
         return true;
     }
 
-
-
     /**
      * Set a valid PSR-3 logger
      *
@@ -146,7 +142,6 @@ class API {
         $this->logger = $logger;
         return true;
     }
-
 
     // cURL methods
     
@@ -444,7 +439,6 @@ class API {
         return $this->getResource($res);
     }
 
-
     /**
      * Get information about a subtitle track in the specified language
      *
@@ -636,8 +630,7 @@ class API {
         if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
         return $this->setResource($res, $query, $data);
     }
-    
-    
+
     /**
      * Move a video into a different team/project
      *
@@ -670,7 +663,6 @@ class API {
         return $this->updateVideo($res);
     }
 
-
     // VIDEO URL RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#video-url-resource
 
@@ -691,7 +683,6 @@ class API {
         return $this->getResource($res, $query);
     }
 
-
     /**
      * Get details about a specific URL
      *
@@ -711,7 +702,6 @@ class API {
         $query = array();
         return $this->getResource($res, $query);
     }
-
 
     /**
      * Adds a new URL for a given video ID
@@ -734,7 +724,6 @@ class API {
         );
         return $this->createResource($res, $query, $data);
     }
-
 
     /**
      * Modify the Primary flag for a given video URL
@@ -759,7 +748,6 @@ class API {
         return $this->setResource($res, $query, $data);
     }
 
-
     /**
      * Delete a given video URL
      *
@@ -780,7 +768,6 @@ class API {
         $data = array();
         return $this->deleteResource($res, $query, $data);
     }
-
 
     // PROJECTS RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#projects-resource
@@ -839,7 +826,6 @@ class API {
         );
         return $this->createResource($res, $query, $data);
     }
-
 
     // ACTIVITY RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#activity-resource
@@ -993,7 +979,6 @@ class API {
         return $this->deleteResource($res);
     }
 
-
     // SUBTITLE REQUEST RESOURCE
     // https://amara.readthedocs.io/en/latest/api.html#subtitle-request-resource
     
@@ -1047,31 +1032,6 @@ class API {
     }
 
     /**
-     * List remote collaboration requests
-     *
-     * @param array $r
-     * @return array|mixed
-     * @since 0.8.0
-     */
-    /*
-    function getRemoteRequests(array $r) {
-        $res = array(
-            'resource' => 'team_requests_remote',
-            'content_type' => 'json',
-            'team' => $r['team']
-        );
-        $query = array(
-            'state' => isset($r['state']) ? $r['state'] : null,
-            'video' => isset($r['video_id']) ? $r['video_id'] : null,
-            'video_language' => isset($r['language_code']) ? $r['language_code'] : null,
-            'language' => isset($r['language']) ? $r['language'] : null,
-            'project' => isset($r['project']) ? $r['project'] : null
-        );
-        return $this->getResource($res, $query);
-    }
-    */
-
-    /**
      * Create a collaboration request
      *
      * @param array $r
@@ -1092,7 +1052,6 @@ class API {
         if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
         return $this->createResource($res, $query, $data);
     }
-
 
     /**
      * Update a collaboration request
@@ -1288,6 +1247,27 @@ class API {
             'role' => $r['role']
        );
         return $this->createResource($res, $query, $data);
+    }
+
+    /**
+     * Update team member
+     *
+     * @since 0.11.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function updateMember(array $r) {
+        $res = array(
+            'resource' => 'member',
+            'content_type' => 'json',
+            'team' => $r['team'],
+            'user' => $r['user'],
+        );
+        $query = array();
+        $data = array(
+            'role' => $r['role']
+        );
+        return $this->setResource($res, $query, $data);
     }
 
     /**
@@ -1509,21 +1489,10 @@ class API {
 
     }
 
-    // ------------------------
     // LOGGING
-    // ------------------------
+
     /**
      * PSR-3 logger
-     *
-     * Levels:
-     * EMERGENCY: System is unusable.
-     * ALERT: Action must be taken immediately.
-     * CRITICAL: Critical conditions.
-     * ERROR: Runtime errors that do not require immediate action but should typically
-     * WARNING: Exceptional occurrences that are not errors.
-     * NOTICE: Normal but significant events.
-     * INFO: Interesting events.
-     * DEBUG: Detailed debug information.
      *
      * @param mixed $level
      * @param string $message
