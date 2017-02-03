@@ -581,23 +581,24 @@ class API {
     function createVideo(array $r) {
         $query = array();
         $data = array();
-        if (isset($r['video_url'], $r['primary_language'], $r['team'])) {
-            $res = array(
-                    'resource' => 'videos',
-                    'content_type' => 'json'
-                );
-            $query = array();
-            $data = array(
-                    'team' => $r['team'],
-                    'video_url' => $r['video_url'],
-            );
-            if (isset($r['title'])) { $data['title'] = $r['title']; }
-            if (isset($r['description'])) { $data['description'] = $r['description']; }
-            if (isset($r['duration'])) { $data['duration'] = $r['duration']; }
-            if (isset($r['primary_audio_language'])) { $data['primary_audio_language'] = $r['primary_audio_language']; }
-            if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
-            if (isset($r['project'])) { $data['project'] = $r['project']; }
+        if (!isset($r['video_url'], $r['primary_audio_language_code'], $r['team'])) {
+            throw new \InvalidArgumentException("Missing arguments");
         }
+        $res = array(
+                'resource' => 'videos',
+                'content_type' => 'json'
+            );
+        $query = array();
+        $data = array(
+                'team' => $r['team'],
+                'video_url' => $r['video_url'],
+        );
+        if (isset($r['title'])) { $data['title'] = $r['title']; }
+        if (isset($r['description'])) { $data['description'] = $r['description']; }
+        if (isset($r['duration'])) { $data['duration'] = $r['duration']; }
+        if (isset($r['primary_audio_language_code'])) { $data['primary_audio_language_code'] = $r['primary_audio_language_code']; }
+        if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
+        if (isset($r['project'])) { $data['project'] = $r['project']; }
         return $this->createResource($res, $query, $data);
     }
 
@@ -626,7 +627,7 @@ class API {
         if (isset($r['title'])) { $data['title'] = $r['title']; }
         if (isset($r['description'])) { $data['description'] = $r['description']; }
         if (isset($r['duration'])) { $data['duration'] = $r['duration']; }
-        if (isset($r['primary_audio_language'])) { $data['primary_audio_language'] = $r['primary_audio_language']; }
+        if (isset($r['primary_audio_language_code'])) { $data['primary_audio_language_code'] = $r['primary_audio_language_code']; }
         if (isset($r['metadata'])) { $data['metadata'] = $r['metadata']; }
         return $this->setResource($res, $query, $data);
     }
