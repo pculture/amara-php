@@ -8,13 +8,13 @@ namespace AmaraPHP;
  * with Amara.org's API.
  *
  * @author Fran Ontanaya
- * @copyright 2016 Fran Ontanaya
+ * @copyright 2017 Fran Ontanaya
  * @license GPLv3
- * @version 0.12.0
+ * @version 0.12.1
  *
  */
 class API {
-    const VERSION = '0.12.0';
+    const VERSION = '0.12.1';
 
     /**
      * Credentials
@@ -364,10 +364,11 @@ class API {
             if ($resultChunk->meta->next === null) {
                 break;
             }
-            if (!isset($q['offset'])) { $q['offset'] = 0; }
+            if (!isset($q['offset'])) {
+                $q['offset'] = 0;
+            }
             $q['offset'] += (isset($q['limit']) ? $q['limit'] : $this->limit);
-
-        } while($resultChunk->meta->next + $q['offset'] < $resultChunk->meta->total_count);
+        } while($resultChunk->meta->offset + $q['limit'] < $resultChunk->meta->total_count);
         return $result;
     }
 
@@ -634,34 +635,63 @@ class API {
 
     /**
      * Move a video into a different team/project
+     * Deprecated - use updateVideo
      *
      * https://amara.readthedocs.io/en/latest/api.html#moving-videos-between-teams-and-projects
      *
      * @since 0.1.0
      * @param array $r
      * @return array|mixed|null
+     * @deprecated
      */
     function moveVideo(array $r) {
-        $res = array('team' => $r['team']);
+        $res = array(
+            'team' => $r['team'],
+            'video_id' => $r['video_id'],
+        );
         if (isset($r['project'])) { $res['project'] = $r['project']; }
         return $this->updateVideo($res);
     }
 
     /**
-     * Change the main video's title
+     * Change the video's main title
      *
      * https://amara.readthedocs.io/en/latest/api.html#put--api2-partners-videos-[video-id]-
-     * Currently broken
+     * Deprecated - use updateVideo
      *
      * @since 0.4.2
      * @param array $r
      * @return array|mixed|null
+     * @deprecated
      */
     function renameVideo(array $r) {
         $res = array();
         if (isset($r['title'])) { $res['title'] = $r['title']; }
         if (isset($r['description'])) { $res['description'] = $r['description']; }
         return $this->updateVideo($res);
+    }
+
+    /**
+     * Delete an existing video
+     *
+     * @param array $r
+     * @return array|mixed|null
+     * @since 0.12.0
+     */
+    function deleteVideo(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        $res = array(
+            'resource' => 'video',
+            'content_type' => 'json',
+            'team' => $r['team'],
+            'video_id' => $r['video_id'],
+        );
+        $query = array();
+        $data = array();
+        if (isset($r['project']) && !isset($r['team'])) {
+            throw new \InvalidArgumentException("Can't specify project without specifying team");
+        }
+        return $this->deleteResource($res, $query, $data);
     }
 
     // VIDEO URL RESOURCE
