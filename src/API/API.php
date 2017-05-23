@@ -337,6 +337,7 @@ class API {
      */
     protected function useResource($method, array $r, $q = null, $data = null, callable $filter = null) {
         $result = array();
+        $limit = (isset($q['limit']) ? $q['limit'] : $this->limit);
         $header = $this->getHeader(isset($r['content_type']) ? $r['content_type'] : null);
         if (isset($data) && $r['content_type'] === 'json') { $data = json_encode($data); }
         do {
@@ -367,8 +368,8 @@ class API {
             if (!isset($q['offset'])) {
                 $q['offset'] = 0;
             }
-            $q['offset'] += (isset($q['limit']) ? $q['limit'] : $this->limit);
-        } while($resultChunk->meta->offset + $q['limit'] < $resultChunk->meta->total_count);
+            $q['offset'] += $limit;
+        } while($resultChunk->meta->offset + $limit < $resultChunk->meta->total_count);
         return $result;
     }
 
