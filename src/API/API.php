@@ -8,13 +8,13 @@ namespace AmaraPHP;
  * with Amara.org's API.
  *
  * @author Fran Ontanaya
- * @copyright 2017 Fran Ontanaya
+ * @copyright 2018 Fran Ontanaya
  * @license GPLv3
- * @version 0.12.1
+ * @version 0.15.0
  *
  */
 class API {
-    const VERSION = '0.12.1';
+    const VERSION = '0.15.0';
 
     /**
      * Credentials
@@ -191,8 +191,11 @@ class API {
         }
         $url = '';
         switch ($r['resource']) {
-            case 'activities':
-                $url = "{$this->host}activity/";
+            case 'team_activities':
+                $url = "{$this->host}teams/{$r['team']}/activity/";
+                break;
+            case 'video_activities':
+                $url = "{$this->host}videos/{$r['video_id']}/activity/";
                 break;
             case 'activity':
                 $url = "{$this->host}activity/{$r['activity_id']}/";
@@ -250,6 +253,9 @@ class API {
                 break;
             case 'subtitle_request':
                 $url = "{$this->host}teams/{$r['team']}/subtitle-requests/{$r['job_id']}/";
+                break;
+            case 'pro_requests':
+                $url = "{$this->host}teams/{$r['team']}/pro-requests/";
                 break;
             default:
                 return null;
@@ -368,7 +374,7 @@ class API {
             if (!isset($q['offset'])) {
                 $q['offset'] = 0;
             }
-            $q['offset'] += $limit;
+            $q['offset'] += $limit;           
         } while($resultChunk->meta->offset + $limit < $resultChunk->meta->total_count);
         return $result;
     }
@@ -863,25 +869,44 @@ class API {
     // https://amara.readthedocs.io/en/latest/api.html#activity-resource
 
     /**
-     * Retrieve a set of activity data
+     * Retrieve a set of activity data for a specific team
      *
-     * Make sure you specify either $team or $video_id
-     * otherwise you'll query public activity from the whole site, which is
-     * a heavy request.
-     * See https://amara.readthedocs.io/en/latest/api.html#activity-resource
-     *
-     * @since 0.1.0
+     * @since 0.14.0
      * @param array $r
      * @return array|mixed
      */
-    function getActivities(array $r = array()) {
+    function getTeamActivities(array $r = array()) {
         $res = array(
-            'resource' => 'activities',
-            'content_type' => 'json'
-       );
-        $query = array(
+            'resource' => 'team_activities',
+            'content_type' => 'json',
             'team' => isset($r['team']) ? $r['team'] : null,
+        );
+        $query = array(
             'video' => isset($r['video_id']) ? $r['video_id'] : null,
+            'type' => isset($r['type']) ? $r['type'] : null,
+            'language' => isset($r['language']) ? $r['language'] : null,
+            'before' => isset($r['before']) ? $r['before'] : null,
+            'after' => isset($r['after']) ? $r['after'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * Retrieve a set of activity data for a specific video
+     *
+     * @since 0.14.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function getVideoActivities(array $r = array()) {
+        $res = array(
+            'resource' => 'video_activities',
+            'content_type' => 'json',
+            'video_id' => isset($r['video_id']) ? $r['video_id'] : null,
+        );
+        $query = array(
             'type' => isset($r['type']) ? $r['type'] : null,
             'language' => isset($r['language']) ? $r['language'] : null,
             'before' => isset($r['before']) ? $r['before'] : null,
@@ -890,6 +915,22 @@ class API {
             'offset' => isset($r['offset']) ? $r['offset'] : 0
        );
         return $this->getResource($res, $query);
+    }
+
+    /**
+     * Legacy method for older activities resource call
+     *
+     * @since 0.14.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function getActivities(array $r = array()) {
+        if (isset($r['team'])) {
+            $result = $this->getTeamActivities($r);
+        } else {
+            $result = $this->getVideoActivities($r);
+        }
+        return $result;
     }
 
     /**
@@ -959,10 +1000,6 @@ class API {
     /**
      * Create a new task
      *
-     * You can pass the data from getVideoLanguage if you
-     * retrieved it earlier, so this doesn't make a new
-     * request.
-     *
      * @since 0.1.0
      * @param array $r
      * @param null $lang_info
@@ -994,6 +1031,30 @@ class API {
         return $this->createResource($res, $query);
     }
 
+    /**
+     * Update a task
+     *
+     * @since 0.1.0
+     */
+    function updateTask(array $r) {
+        if (!isset($r['task_id'])) { return null; }
+        $res = array(
+            'resource' => 'task',
+            'content_type' => 'json',
+            'team' => $r['team'],
+            'task_id' => $r['task_id'],
+        );
+        $query = array();
+        $data = array();
+        if (isset($r['send_back'])) { $data['send_back'] = $r['send_back']; }
+        if (isset($r['assignee'])) { $data['assignee'] = $r['assignee']; }
+        if (isset($r['priority'])) { $data['priority'] = $r['priority']; }
+        if (isset($r['complete'])) { $data['complete'] = $r['complete']; }
+        if (isset($r['version_number'])) { $data['version_number'] = $r['version_number']; }
+        return $this->setResource($res, $query, $data);
+    }
+    
+    
     /**
      * Delete a task
      *
@@ -1042,7 +1103,14 @@ class API {
             'assignee' => isset($r['assignee']) ? $r['assignee'] : null,
             'type' => isset($r['type']) ? $r['type'] : null,
         );
-        return $this->getResource($res, $query);
+        $filter = null;
+        if (isset($r['filter'])) {
+            if (!is_callable($r['filter'])) {
+                throw new \UnexpectedValueException('The \'filter\' argument is not a callable function.');
+            }
+            $filter = $r['filter'];
+        };
+        return $this->getResource($res, $query, null, $filter);
     }
 
     /**
@@ -1073,14 +1141,15 @@ class API {
     function createRequest(array $r) {
         $res = array(
             'resource' => 'subtitle_requests',
-            'content_type' => 'json'
+            'content_type' => 'json',
+            'team' => $r['team']
         );
         $query = array();
         $data = array(
             'video' => $r['video_id'],
             'language' => $r['language_code'],
-            'team' => $r['team']
         );
+        if (isset($r['work_team'])) { $data['team'] = $r['work_team']; }
         if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
         return $this->createResource($res, $query, $data);
     }
@@ -1109,7 +1178,37 @@ class API {
         if (isset($r['reviewer'])) { $data['reviewer'] = $r['reviewer']; }
         if (isset($r['approver'])) { $data['approver'] = $r['approver']; }
         if (isset($r['state'])) { $data['state'] = $r['state']; }
+        if (isset($r['work_team'])) { $data['team'] = $r['work_team']; }
+        if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
         return $this->setResource($res, $query, $data);
+    }
+
+    // PRO REQUESTS RESOURCE
+    /**
+     * Post a new pro request
+     *
+     * For enterprise teams with pro requests enabled.
+     *
+     * The list of valid languages can be shorter than for regular collaborations.
+     * API will reply "Professional Service Request Invalid" on unavailable language codes.
+     *
+     * @since 0.15.0
+     */
+    function createProRequest(array $r) {
+        if (!$this->isValidVideoID($r['video_id'])) { return null; }
+        $res = array(
+            'resource' => 'pro_requests',
+            'team' => $r['team'],
+            'content_type' => 'json',
+        );
+        $query = array();
+        $data = array(
+            'video_id' => $r['video_id'],
+            'language_code' => $r['language_code'],
+            'quality_tier' => $r['quality'],
+            'turnaround_time' => $r['turnaround'],
+        );
+        return $this->createResource($res, $query, $data);
     }
 
     // SUBTITLES RESOURCE
@@ -1119,8 +1218,6 @@ class API {
      * Fetch the subtitle track
      *
      * Specifying the version is needed to retrieve unpublished subtitles
-     * You may pass $lang_info if you retrieved it previously, or any
-     * variable to store it afterwards
      *
      * If you don't specify the format, you'll get Amara's internal
      * subtitle object. You can use it in your code instead of
@@ -1128,21 +1225,10 @@ class API {
      *
      * @since 0.1.0
      * @param array $r
-     * @param null $lang_info
      * @return array|mixed|null
      */
-    function getSubtitle(array $r, &$lang_info = null) {
+    function getSubtitle(array $r) {
         if (!$this->isValidVideoID($r['video_id'])) { return null; }
-        if (!isset($r['version'])) {
-            if ($lang_info === null) {
-                $lang_info = $this->getVideoLanguage(array(
-                    'video_id' => $r['video_id'],
-                    'language_code' => $r['language_code']
-               ));
-            }
-            $r['version'] = $this->getLastVersion($lang_info);
-        }
-        if ($r['version'] === null) { return null; }
         $res = array(
             'resource' => 'subtitles',
             'video_id' => $r['video_id'],
@@ -1150,7 +1236,7 @@ class API {
        );
         $query = array(
             'format' => isset($r['format']) ? $r['format'] : 0,
-            'version' => isset($r['version']) ? $r['version'] : 0
+            'version_number' => isset($r['version_number']) ? $r['version_number'] : null
        );
        return $this->getResource($res, $query);
     }
