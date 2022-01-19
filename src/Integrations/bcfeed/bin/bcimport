@@ -1,0 +1,121 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Output list of videos from BC using cURL and a running local proxy
+ */
+
+/**
+ * Load config
+ */
+$configPath = $_SERVER['HOME'] . '/.bcfeed/nowness.json';
+$config = json_decode(file_get_contents($configPath));
+//todo: check if local proxy is running
+
+$videos = bcGetVideos($config);
+var_dump(bcListVideos($config, $videos));
+
+function bcGetVideos($config) {
+    //todo: validate config
+    $bcAPIURL = "https://cms.api.brightcove.com/v1/accounts/{$config->accountID}/videos" .
+                "?sort=-published_at" .
+                "&limit={$config->limit}";
+    if (isset($config->q)) {
+        $bcAPIURL .= "&q={$config->q}";
+    }
+    if ($config->tags) {
+        $bcAPIURL .= "&q=+tags:{$config->tags}";
+    }
+    $url = $config->proxyURL;
+    $referer = $config->referer;
+    $contentType = 'text/plain;charset=UTF-8';
+    $connection = 'keep-alive';
+    $data = json_encode([
+        'proxyURL' => $config->proxyURL,
+        'account_id' => $config->accountID,
+        'client_id' => $config->clientID,
+        'client_secret' => $config->clientSecret,
+        'url' => $bcAPIURL,
+        'requestType' => 'GET',
+    ]);
+    $cr = curl_init();
+    curl_setopt($cr, CURLOPT_URL, $url);
+    curl_setopt($cr, CURLOPT_VERBOSE, 1);
+    curl_setopt($cr, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($cr, CURLOPT_USERAGENT, 'curl/7.58.0');
+    curl_setopt($cr, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($cr, CURLOPT_HTTPHEADER, [
+            "Content-Type: {$contentType}",
+            "Connection: {$connection}",
+            "Referer: {$referer}",
+        ]
+    );
+    curl_setopt($cr, CURLOPT_POST, 1);
+    curl_setopt($cr, CURLOPT_POSTFIELDS, $data);
+    $result = curl_exec($cr);
+    curl_close($cr);
+    return json_decode($result);
+}
+
+
+
+function bcGetPolicyKey($playerURL, $playerID, $videoID) {
+    $bcPlayerURL =  "http://players.brightcove.net/{$playerID}/default_default/index.html?directedMigration=true&videoId={$videoID}&autoplay=true&";
+    $referer = $playerURL;
+    $connection = 'keep-alive';
+    $cr = curl_init();
+    curl_setopt($cr, CURLOPT_URL, $bcPlayerURL);
+    curl_setopt($cr, CURLOPT_VERBOSE, 0);
+    curl_setopt($cr, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($cr, CURLOPT_USERAGENT, 'curl/7.58.0');
+    curl_setopt($cr, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($cr, CURLOPT_HTTPHEADER, [
+            "Connection: {$connection}",
+            "Referer: {$referer}",
+        ]
+    );
+    $result = curl_exec($cr);
+    curl_close($cr);
+    preg_match('/accountId:"[0-9]+",policyKey:"([^"]+)"/', $result, $matches);
+    return $matches[1];
+}
+
+function bcGetProxyMP4($config, $policyKey, $videoID) {
+    $bcEdgeURL =  "https://edge.api.brightcove.com/playback/v1/accounts/{$config->accountID}/videos/{$videoID}";
+    $referer = $config->referer;
+    $contentType = 'text/plain;charset=UTF-8';
+    $connection = 'keep-alive';
+    $cr = curl_init();
+    curl_setopt($cr, CURLOPT_URL, $bcEdgeURL);
+    curl_setopt($cr, CURLOPT_VERBOSE, 0);
+    curl_setopt($cr, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($cr, CURLOPT_USERAGENT, 'curl/7.58.0');
+    curl_setopt($cr, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($cr, CURLOPT_HTTPHEADER, [
+            "Content-Type: {$contentType}",
+            "Connection: {$connection}",
+            "Referer: {$referer}",
+            "Accept: application/json;pk=" . $policyKey,
+        ]
+    );
+    $result = curl_exec($cr);
+    curl_close($cr);
+    var_dump(json_decode($result));
+    echo "\n==============================\n\n";
+    return json_decode($result);
+}
+
+function bcListVideos($config, $videos) {
+    $csv = [];
+    foreach ($videos as $video) {
+        $playerURL = $config->bcPlayer . '&bctid=' . $video->id;
+        $policyKey = bcGetPolicyKey($playerURL, $config->playerID, $video->id);
+        $videoTitle = (empty($video->description)) ? $video->name : $video->description;
+        echo $playerURL, " ", $videoTitle, "\n";
+        bcGetProxyMP4($config, $policyKey, $video->id);
+        $csv[] = [
+                $videoTitle,
+                $playerURL,
+        ];
+    }
+    return $csv;
+}

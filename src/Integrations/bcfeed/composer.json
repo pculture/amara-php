@@ -1,0 +1,17 @@
+{
+    "name": "franontanaya/bcfeed",
+    "description": "Provides a list of BrightCove videos as direct links using account and secret credentials",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Fran Ontanaya",
+            "email": "email@franontanaya.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.0",
+        "ext-curl": ">=7.0",
+        "ext-json": ">=1.6",
+        "phpunit/phpunit": "~8.2"
+    }
+}
