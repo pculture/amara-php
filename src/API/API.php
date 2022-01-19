@@ -1,5 +1,5 @@
 <?php
-namespace AmaraPHP;
+namespace FranOntanaya\Amara;
 
 /**
  * Amara API component
@@ -8,18 +8,20 @@ namespace AmaraPHP;
  * with Amara.org's API.
  *
  * @author Fran Ontanaya
- * @copyright 2018 Fran Ontanaya
+ * @copyright 2020 Fran Ontanaya
  * @license GPLv3
- * @version 0.15.0
+ * @version 0.21.1
  *
  */
 class API {
-    const VERSION = '0.15.0';
+
+    const VERSION = '0.21.1';
 
     /**
      * Credentials
      *
-     * APIVersion: key - value pair to add to the GET request, e.g. apifuture=>20161201
+     * APIVersion: header to add to the request to use future API versions,
+     * e.g. X-API-FUTURE: 20190619
      *
      * @since 0.1.0
      */
@@ -40,12 +42,14 @@ class API {
      * Settings
      *
      * $limit: number of records per request. Keep low to avoid timeouts.
+     * $cookie: in case the API point requires a session
      *
      * @since 0.1.0
     */
     public $retries = 10;
-    public $limit = 10;
+    public $limit = 100;
     public $verboseCurl = false;
+    public $cookie = null;
 
     /**
      * Initialization
@@ -55,9 +59,8 @@ class API {
      * @param $user
      * @param $APIKey
      */
-    function __construct($host, $user, $APIKey, $APIVersion = null, $logger = null) {
-        $this->setAccount($host, $user, $APIKey);
-        $this->setAPIVersion($APIVersion);
+    function __construct($host, $user, $APIKey, string $APIVersion = '', $logger = null) {
+        $this->setAccount($host, $user, $APIKey, $APIVersion);
         $this->setLogger($logger);
     }
 
@@ -68,9 +71,9 @@ class API {
      * @param $host
      * @param $user
      * @param $APIKey
-     * @throws \InvalidAPIAccount
+     * @throws \Exception
      */
-    function setAccount($host, $user, $APIKey, array $APIVersion = []) {
+    function setAccount($host, $user, $APIKey, string $APIVersion = '') {
         $this->validateAccount($host, $user, $APIKey);
         if ($this->host !== $host && $this->APIKey === $APIKey) {
             $this->throwException(
@@ -87,10 +90,12 @@ class API {
                 'API key should be the same when changing usernames'
             );
         }
-        $this->setAPIVersion($APIVersion);
+        $this->host = $host;
         $this->user = $user;
         $this->APIKey = $APIKey;
-        $this->host = $host;
+        if ($APIVersion !== '') {
+            $this->setAPIVersion($APIVersion);
+        }
     }
 
 
@@ -99,23 +104,16 @@ class API {
      *
      * @param array $APIVersion
      * @return bool
+     * @throws \Exception
      */
-    function setAPIVersion($APIVersion) {
+    function setAPIVersion(string $APIVersion) {
         if (empty($APIVersion)) { return false; }
-        if (count($APIVersion) > 1) {
+        if (preg_match('/[^A-Za-z0-9\-_]/', $APIVersion)) {
             $this->throwException(
                 'InvalidAPISettings',
                 __METHOD__,
-                'Too many elements passed for the API Version',
-                'API Version should be one key-value pair or nothing'
-            );
-        }
-        if (!is_string(array_keys($APIVersion))) {
-            $this->throwException(
-                'InvalidAPISettings',
-                __METHOD__,
-                'API Version key is not a string',
-                'API Version key should be a string'
+                'The API Version string has unexpected characters',
+                ''
             );
         }
         $this->APIVersion = $APIVersion;
@@ -128,6 +126,7 @@ class API {
      * @since 0.1.0
      * @param $logger
      * @return bool
+     * @throws \Exception
      */
     function setLogger($logger) {
         if ($logger === null) { $this->logger = null; return false; }
@@ -144,14 +143,14 @@ class API {
     }
 
     // cURL methods
-    
+
     /**
      * Generates headers needed by Amara's API
      *
      * @since 0.1.0
      * @param null $ct
      * @return array
-     * @throws \InvalidAPIAccount
+     * @throws \Exception
      */
     function getHeader($ct = null) {
         assert($this->validateAccount($this->host, $this->user, $this->APIKey));
@@ -163,14 +162,25 @@ class API {
                 gettype($ct)
             );
         }
-        $r = array(
-            "X-api-username: {$this->user}",
-            "X-APIKey: {$this->APIKey}"
-        );
+        // API updates, see https://blog.amara.org/2019/04/23/upcoming-amara-api-changes-summer-2019/
+        if ((date('Ymd') >= 20190619) || isset($this->APIVersion) && $this->APIVersion >= 20190619) {
+            $r = array(
+                "x-api-key: {$this->APIKey}",
+                'X-API-FUTURE: ' . $this->APIVersion,
+            );
+        } else {
+            $r = array(
+                "X-api-username: {$this->user}",
+                "X-APIKey: {$this->APIKey}",
+            );
+        }
         if ($ct === 'json') { $r = array_merge($r, array(
             'Content-Type: application/json',
-            'Accept: application/json'
+            'Accept: application/json',
         )); }
+        if ($this->cookie !== null) {
+            $r = array_merge($r, $this->cookie);
+        }
         return $r;
     }
 
@@ -221,6 +231,9 @@ class API {
             case 'subtitles':
                 $url = "{$this->host}videos/{$r['video_id']}/languages/{$r['language']}/subtitles/";
                 break;
+            case 'notes':
+                $url = "{$this->host}videos/{$r['video_id']}/languages/{$r['language']}/subtitles/notes/";
+                break;
             case 'tasks':
                 $url = "{$this->host}teams/{$r['team']}/tasks/";
                 break;
@@ -237,7 +250,13 @@ class API {
                 $url = "{$this->host}teams/{$r['team']}/members/{$r['user']}/";
                 break;
             case 'users':
+                $url = "{$this->host}users/";
+                break;
+            case 'user':
                 $url = "{$this->host}users/{$r['user']}/";
+                break;
+            case 'user_activities':
+                $url = "{$this->host}users/{$r['user']}/activities/";
                 break;
             case 'applications':
                 $url = "{$this->host}teams/{$r['team']}/applications/";
@@ -289,8 +308,7 @@ class API {
             case 'GET':
                 break;
             case 'POST':
-        		curl_setopt( $cr, CURLOPT_POST, 1 ); // Needed when creating a new language
-                //curl_setopt($cr, CURLOPT_CUSTOMREQUEST, $mode);
+        		curl_setopt($cr, CURLOPT_POST, 1);
                 curl_setopt($cr, CURLOPT_POSTFIELDS, $data);
                 break;
             case 'PUT':
@@ -311,7 +329,8 @@ class API {
     /**
      * cURL retry loop
      *
-     * Exhaust all retries for HTTP actions.
+     * Executes the request and retries on failure after a while for some temporary issues
+     * 429 API quota errors reset every minute.
      *
      * @since 0.1.0
      * @param $cr
@@ -320,9 +339,23 @@ class API {
     protected function curlTry($cr) {
         $retries = 0;
         do {
+            $retry = false;
             $result = curl_exec($cr);
+            if ($result === false) {
+                $retry = true;
+                sleep(30 * ($retries + 1));
+            } else {
+                $HTTPStatus = curl_getinfo($cr, CURLINFO_HTTP_CODE);
+                switch ($HTTPStatus) {
+                    case '429': // Too many requests (hit the API quota)
+                    case '504': // Gateway timeout (server couldn't reply)
+                        $retry = true;
+                        sleep(30 * ($retries + 1)); // wait for 30 seconds longer on each retry
+                        break;
+                }
+            }
             $retries++; if ($retries > $this->retries) { return null; }
-        } while($result === false);
+        } while($retry);
         return $result;
     }
 
@@ -350,7 +383,7 @@ class API {
             $url = $this->getResourceUrl($r, $q);
             $response = $this->curl($method, $header, $url, $data);
             $resultChunk = json_decode($response);
-            if (json_last_error() != JSON_ERROR_NONE) {
+            if (json_last_error() !== JSON_ERROR_NONE) {
                 // It's not JSON, just deliver as-is.
                 return $response;
             }
@@ -443,8 +476,12 @@ class API {
             'resource' => 'languages',
             'content_type' => 'json',
             'video_id' => $r['video_id'],
-       );
-        return $this->getResource($res);
+        );
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
+        return $this->getResource($res, $query);
     }
 
     /**
@@ -485,7 +522,7 @@ class API {
      * @since 0.1.0
      * @param $lang_info
      * @return null
-     * @throws \UnknownException
+     * @throws \Exception
      */
     function getLastVersion($lang_info) {
         if (!is_object($lang_info)) {
@@ -587,8 +624,6 @@ class API {
      * @return array|mixed
      */
     function createVideo(array $r) {
-        $query = array();
-        $data = array();
         if (!isset($r['video_url'], $r['primary_audio_language_code'], $r['team'])) {
             throw new \InvalidArgumentException("Missing arguments");
         }
@@ -717,7 +752,10 @@ class API {
             'content_type' => 'json',
             'video_id' => $r['video_id'],
         );
-        $query = array();
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
         return $this->getResource($res, $query);
     }
 
@@ -822,7 +860,10 @@ class API {
             'team' => $r['team'],
             'content_type' => 'json'
         );
-        $query = array();
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
         return $this->getResource($res, $query);
     }
 
@@ -834,7 +875,7 @@ class API {
      */
     function getProject(array $r = array()) {
         $res = array(
-            'resource' => 'projects',
+            'resource' => 'project',
             'team' => $r['team'],
             'project' => $r['project'],
             'content_type' => 'json'
@@ -1004,6 +1045,7 @@ class API {
      * @param array $r
      * @param null $lang_info
      * @return array|mixed|null
+     * @throws \Exception
      */
     function createTask(array $r, &$lang_info = null) {
         if (!is_object($lang_info)) { $lang_info = null; }
@@ -1094,15 +1136,21 @@ class API {
             'content_type' => 'json',
             'team' => $r['team']
         );
+        if (isset($r['state'])) { $r['work_status'] = $r['state']; } // API transition
         $query = array(
-            'state' => isset($r['state']) ? $r['state'] : null,
+            'work_status' => isset($r['work_status']) ? $r['work_status'] : null,
+            'status' => isset($r['status']) ? $r['status'] : null,
             'video' => isset($r['video_id']) ? $r['video_id'] : null,
             'language' => isset($r['language_code']) ? $r['language_code'] : null,
             'video_language' => isset($r['video_language']) ? $r['video_language'] : null,
             'project' => isset($r['project']) ? $r['project'] : null,
             'assignee' => isset($r['assignee']) ? $r['assignee'] : null,
             'type' => isset($r['type']) ? $r['type'] : null,
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0,
+            'sort' => isset($r['sort']) ? $r['sort'] : null,
         );
+
         $filter = null;
         if (isset($r['filter'])) {
             if (!is_callable($r['filter'])) {
@@ -1174,13 +1222,32 @@ class API {
         );
         $query = array();
         $data = array();
+        if (isset($r['state'])) { $r['work_status'] = $r['state']; } // API transition
         if (isset($r['subtitler'])) { $data['subtitler'] = $r['subtitler']; }
         if (isset($r['reviewer'])) { $data['reviewer'] = $r['reviewer']; }
         if (isset($r['approver'])) { $data['approver'] = $r['approver']; }
-        if (isset($r['state'])) { $data['state'] = $r['state']; }
+        if (isset($r['work_status'])) { $data['work_status'] = $r['work_status']; }
         if (isset($r['work_team'])) { $data['team'] = $r['work_team']; }
         if (isset($r['evaluation_teams'])) { $data['evaluation_teams'] = $r['evaluation_teams']; }
         return $this->setResource($res, $query, $data);
+    }
+
+    /**
+     * Delete a collaboration request
+     *
+     * @param array $r
+     * @return array|mixed
+     */
+    function deleteRequest(array $r) {
+        $res = array(
+            'resource' => 'subtitle_request',
+            'team' => $r['team'],
+            'job_id' => $r['job_id'],
+            'content_type' => 'json'
+        );
+        $query = array();
+        $data = array();
+        return $this->deleteResource($res, $query, $data);
     }
 
     // PRO REQUESTS RESOURCE
@@ -1284,9 +1351,53 @@ class API {
         $data = array(
             'subtitles' => isset($r['subtitles']) ? $r['subtitles'] : null,
             'sub_format' => isset($r['sub_format']) ? $r['sub_format'] : null,
-            'title' => isset($r['title']) ? $r['title'] : $lang_info->title,
-            'description' => isset($r['description']) ? $r['description'] : $lang_info->description,
-            'is_complete' => isset($r['complete']) ? $r['complete'] : null
+            'is_complete' => isset($r['complete']) ? $r['complete'] : null,
+        );
+        if (isset($r['title'])) {
+            $data['title'] = isset($r['title']) ? $r['title'] : $lang_info->title;
+        }
+        if (isset($r['description'])) {
+            $data['description'] = isset($r['description']) ? $r['description'] : $lang_info->description;
+        }
+        if (isset($r['action'])) { $data['action'] = $r['action']; }
+        return $this->createResource($res, $query, $data);
+    }
+
+    // SUBTITLE NOTES RESOURCE
+    // https://apidocs.amara.org/#fetch-notes
+    function getNotes(array $r) {
+        $res = array(
+            'resource' => 'notes',
+            'video_id' => $r['video_id'],
+            'language' => $r['language_code'],
+            'content_type' => 'json',
+        );
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
+        return $this->getResource($res, $query);
+    }
+
+    /**
+     * Add a subtitles note to the given video and language.
+     *
+     * @param array $r
+     * @return array|mixed
+     */
+    function createNote(array $r) {
+        $res = array(
+            'resource' => 'notes',
+            'video_id' => $r['video_id'],
+            'language' => $r['language_code'],
+            'content_type' => 'json',
+        );
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
+        $data = array(
+            'body' => isset($r['body']) ? $r['body'] : null,
         );
         return $this->createResource($res, $query, $data);
     }
@@ -1306,11 +1417,11 @@ class API {
             'resource' => 'members',
             'content_type' => 'json',
             'team' => $r['team']
-       );
+        );
         $query = array(
             'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
             'offset' => isset($r['offset']) ? $r['offset'] : 0
-       );
+        );
         return $this->getResource($res, $query);
     }
 
@@ -1417,7 +1528,7 @@ class API {
      */
     function getUser(array $r) {
         $res = array(
-            'resource' => 'users',
+            'resource' => 'user',
             'content_type' => 'json',
             'user' => $r['user']
        );
@@ -1436,10 +1547,10 @@ class API {
         $result = array();
         for ($i = 0; $i < count($users); $i++) {
             $res = array(
-                'resource' => 'users',
+                'resource' => 'user',
                 'content_type' => 'json',
                 'user' => $users[$i]
-           );
+            );
             $user = $this->getResource($res);
             if (!is_object($user)) {
                 continue;
@@ -1448,6 +1559,50 @@ class API {
         }
         return $result;
     }
+
+    /**
+     * Returns list of activities for a given user
+     *
+     * @since 0.16.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function getUserActivities(array $r) {
+        $res = array(
+            'resource' => 'user',
+            'content_type' => 'json',
+            'user' => $r['user'],
+            'type'=> $r['type'],
+        );
+        $query = array(
+            'limit' => isset($r['limit']) ? $r['limit'] : $this->limit,
+            'offset' => isset($r['offset']) ? $r['offset'] : 0
+        );
+        return $this->getResource($res, $query);
+    }
+
+
+    /**
+     * Create user
+     *
+     * @since 0.18.0
+     * @param array $r
+     * @return array|mixed
+     */
+    function createUser(array $r) {
+        $res = array(
+            'resource' => 'users',
+            'content_type' => 'json',
+        );
+        $query = array();
+        $data = array(
+            'username' => $r['username'],
+            'email' => $r['email'],
+            'create_login_token' => true
+        );
+        return $this->createResource($res, $query, $data);
+    }
+
 
     // TEAM APPLICATIONS
     // http://amara.readthedocs.io/en/old-api-docs/api.html#team-applications-resource
@@ -1571,6 +1726,7 @@ class API {
     /**
      * Check if a string is a valid language code
      *
+     * @todo: add some language codes supported by Amara since
      * @since 0.3.0
      * @param $languageCode
      * @return bool
@@ -1588,6 +1744,7 @@ class API {
      * @param $caller
      * @param $expected
      * @param $got
+     * @throws \Exception
      */
     protected function throwException($type, $caller, $expected, $got) {
         switch ($type) {
@@ -1601,7 +1758,7 @@ class API {
                 break;
             default:
                 $message = "Unknown exception. Caller: {$caller}, Expected: {$expected}, Got: {$got}";
-                throw new \UnknownException($message);
+                throw new \Exception($message);
                 break;
         }
 
@@ -1620,7 +1777,8 @@ class API {
      */
     public function log($level, string $message, array $context = array()) {
         if ($this->logger !== null) {
-            $this->logger->log($level, $message, $context);
+            return $this->logger->log($level, $message, $context);
         }
+        return null;
     }
 }
